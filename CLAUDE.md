@@ -1,0 +1,211 @@
+# CLAUDE.md — PulseBoard
+
+> **Active tasks live in [TASKS.md](TASKS.md). Check before starting work.**
+> **Implementation plans live in [docs/](docs/).**
+---
+
+## Project Overview
+
+PulseBoard is a modern, multi-tenant HR platform built by BIPO Service (Singapore).
+It replaces legacy HR tooling with a vibe-code-friendly architecture — the PM team gives direction, AI handles implementation.
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router) + TypeScript
+- **Styling**: Tailwind CSS v4 + shadcn/ui (components live in `src/components/ui/`)
+- **Database & Auth**: Supabase (Postgres + Auth + Row-Level Security)
+- **Icons**: lucide-react
+- **Package manager**: npm
+- **Deployment**: Localhost (dev), Vercel (production)
+
+## Architecture
+
+### Multi-Tenancy Model
+
+- **tenants** table with `is_super` flag — BIPO Service is the super-tenant (slug: `bipo`)
+- **tenant_users** join table maps users → tenants with roles
+- Users can belong to multiple tenants (BIPO staff may access client tenants for support)
+- All data queries are scoped via Supabase Row-Level Security (RLS) based on `auth.uid()` lookups against `tenant_users`
+- Current tenant stored in `pb-tenant` cookie (httpOnly, set by middleware)
+
+### Roles (hierarchical)
+
+1. `super_admin` — BIPO platform team. Full access to all tenants and platform settings
+2. `tenant_admin` — Client org admin. Manages users/settings within their tenant
+3. `manager` — Team lead with elevated read access
+4. `employee` — Standard user
+
+### Key Directories
+
+```
+pulseboard/
+├── middleware.ts                    # Auth guard, tenant resolution, role-based route protection
+├── supabase/migrations/            # SQL migrations (run via `supabase db push`)
+├── docs/                           # Implementation plans & reference docs
+│   ├── RBAC_PLAN.md               # RBAC overhaul blueprint
+│   ├── STUDIO_PLAN.md             # Studio schema builder blueprint
+│   └── THEME.md                   # Cyberpunk theme reference (colors, animations, CSS classes)
+├── src/
+│   ├── app/                        # Next.js App Router pages
+│   │   ├── login/ & signup/        # Public auth pages
+│   │   ├── auth/callback/          # SSO/OAuth code exchange
+│   │   └── dashboard/              # Protected pages
+│   │       ├── users/              # tenant_admin+ (user management)
+│   │       ├── tenants/            # super_admin only (tenant management)
+│   │       └── studio/             # Schema builder (sidebar folder)
+│   │           ├── system-collections/  # super_admin writes
+│   │           ├── tenant-collections/  # tenant_admin+ CRUD
+│   │           ├── content-catalog/     # super_admin lookups
+│   │           └── collections/[slug]/  # Schema + Items
+│   ├── components/
+│   │   ├── ui/                     # shadcn/ui primitives (DO NOT manually edit)
+│   │   ├── sidebar.tsx             # Navigation sidebar (role-aware)
+│   │   ├── header.tsx              # Top bar with tenant switcher + user menu
+│   │   ├── tenant-switcher.tsx     # Dropdown to switch active tenant
+│   │   └── role-gate.tsx           # Conditional render by role
+│   ├── lib/
+│   │   ├── supabase/client.ts      # Browser Supabase client
+│   │   ├── supabase/server.ts      # Server Supabase client (cookie-aware)
+│   │   ├── supabase/admin.ts       # Service-role client (admin ops only)
+│   │   ├── auth.ts                 # Helpers: getUser, getUserRole, getUserTenants
+│   │   ├── tenant.ts               # Helpers: getCurrentTenantId, resolveTenant
+│   │   └── constants.ts            # Role enum, cookie name, public routes
+│   ├── hooks/                      # Client-side React hooks
+│   └── types/                      # TypeScript types (Supabase generated types go here)
+```
+
+### Auth Flow
+
+1. Signup → `supabase.auth.signUp()` → auto-creates `profiles` row via DB trigger
+2. Login → `supabase.auth.signInWithPassword()` → redirect to `/dashboard`
+3. Middleware refreshes session on every request, resolves tenant from cookie
+4. SSO ready: Supabase Auth supports SAML/OIDC via `signInWithSSO({ domain })`
+
+### Middleware Pipeline (`middleware.ts`)
+
+1. Skip public routes (`/login`, `/signup`, `/auth/callback`)
+2. Validate Supabase session → redirect to `/login` if missing
+3. Resolve tenant → set `pb-tenant` cookie if missing
+4. Route-level RBAC: `/dashboard/admin/tenants` = super_admin, `/dashboard/admin` = tenant_admin+
+
+## Conventions
+
+- **Mobile-first**: All UI must be responsive. Use Tailwind responsive prefixes (`sm:`, `md:`, `lg:`)
+- **Server Components by default**: Only add `"use client"` when the component needs interactivity (state, effects, event handlers)
+- **shadcn/ui components**: Never edit files in `src/components/ui/` manually. Add new ones via `npx shadcn@latest add <component>`
+- **Supabase clients**: Use `client.ts` in client components, `server.ts` in server components/route handlers, `admin.ts` only for admin operations that bypass RLS
+- **Tenant scoping**: Never query data without tenant context. RLS handles this at the DB level
+- **No secrets in client code**: Only `NEXT_PUBLIC_*` env vars are accessible in the browser
+
+## Environment Variables
+
+File: `.env.local` (never commit this)
+
+```
+NEXT_PUBLIC_SUPABASE_URL      # Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY # Supabase anon/public key
+SUPABASE_SERVICE_ROLE_KEY     # Server-only service role key
+NEXT_PUBLIC_APP_NAME          # "PulseBoard"
+NEXT_PUBLIC_SUPER_TENANT_SLUG # "bipo"
+```
+
+## Super-Tenant (BIPO) Behavior
+
+BIPO Service (`is_super: true`) has special privileges:
+- Can view and manage all tenants via `/dashboard/admin/tenants`
+- `super_admin` users can access any tenant's data
+- Platform-level settings and configurations are BIPO-only
+
+## Machine Constraints
+
+- **DO NOT install Docker** — corporate laptop (BIPO Service), not licensed
+- **DO NOT run `npx supabase start`** — requires Docker
+- All Supabase work must target cloud instances via `npx supabase db push --linked`
+
+## Commands
+
+```bash
+npm run dev          # Start dev server (http://localhost:3000)
+npm run build        # Production build
+npm run lint         # ESLint
+npx supabase db push --linked                 # Apply migrations to cloud
+npx supabase gen types typescript --linked > src/types/database.ts
+```
+
+---
+
+## Working with Claude Code
+
+### Approach
+- Prefer reading only the files directly relevant to the task — avoid bulk reads of the whole codebase.
+- Use the Explore agent for broad codebase searches instead of multiple Grep rounds.
+
+### Tool Preferences
+- Use dedicated tools (Read, Grep, Glob, Edit, Write) over Bash equivalents
+- Use the Explore agent for broad codebase searches instead of multiple Grep rounds
+
+### Code Conventions (Claude enforces these)
+- shadcn/ui: Never edit `src/components/ui/` manually — use `npx shadcn@latest add <component>`
+- Supabase admin client (`admin.ts`) only for operations that must bypass RLS
+- All new pages must have a corresponding RLS policy before shipping
+- No `"use client"` unless the component genuinely needs browser APIs / state
+
+### UI / Dark Theme (STRICTLY enforced — no exceptions)
+PulseBoard is a **fully dark** app. Every page and grid MUST use these tokens. Never use plain `<Card>` without explicit dark classes. Never use `text-zinc-500`, `bg-white`, `bg-card`, `bg-background`, or any light default shadcn styles in page content.
+
+> Full theme reference (colors, animations, CSS classes, fonts): [docs/THEME.md](docs/THEME.md)
+
+**Page structure template:**
+```tsx
+<div className="p-6 space-y-6 max-w-5xl">
+  {/* Header */}
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-3">
+      <Icon className="h-6 w-6 text-blue-600" />
+      <div>
+        <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>Title</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Subtitle</p>
+      </div>
+    </div>
+    {/* Action button (if any) */}
+  </div>
+
+  {/* Table */}
+  <div className="rounded-lg border border-gray-200 overflow-hidden">
+    <Table>
+      <TableHeader className="bg-gray-100">
+        <TableRow className="border-gray-200 hover:bg-transparent">
+          <TableHead className="text-gray-500">Column</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, i) => (
+          <TableRow key={row.id} className={`border-blue-500/10 hover:bg-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+            <TableCell className="text-gray-900">{row.name}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </div>
+
+  {/* Footnote (optional) */}
+  <p className="text-xs text-gray-500">...</p>
+</div>
+```
+
+**Token reference:**
+- Heading: `text-gray-900` + `fontFamily: "var(--font-geist-sans), sans-serif"`
+- Subtitle / secondary text: `text-gray-500`
+- Table border: `border-gray-200`
+- Table header bg: `bg-gray-100`
+- Row even: `bg-white`  Row odd: `bg-gray-50`
+- Row hover: `hover:bg-gray-50`
+- Slug/code: `rounded bg-gray-100 px-1.5 py-0.5 text-xs text-blue-600 font-mono`
+- Empty state: `text-center text-gray-500 py-10`
+- Back link: `text-sm text-gray-500 hover:text-blue-600 transition-colors`
+- Card (if used): MUST include `bg-white border-gray-200`
+
+### SSO Integration (Future)
+- Supabase Auth natively supports SAML 2.0 and OIDC
+- Per-tenant SSO config stored in `tenants.settings` JSONB (`sso_domain`, `sso_provider`)
+- Auto-redirect users based on email domain matching
