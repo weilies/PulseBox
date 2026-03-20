@@ -32,8 +32,8 @@ It replaces legacy HR tooling with a vibe-code-friendly architecture — the PM 
 
 1. `super_admin` — BIPO platform team. Full access to all tenants and platform settings
 2. `tenant_admin` — Client org admin. Manages users/settings within their tenant
-3. `manager` — Team lead with elevated read access
-4. `employee` — Standard user
+
+> `manager` and `employee` roles were dropped from the design.
 
 ### Key Directories
 

@@ -1,5 +1,7 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveApiContext, apiErr, paginate } from "../../../_lib/api-auth";
+import { validateItemData } from "@/lib/collection-validation";
+import { fireWebhooks, runPreSaveHook } from "@/lib/webhooks";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -10,7 +12,7 @@ async function resolveCollection(
 ) {
   const { data } = await db
     .from("collections")
-    .select("id, type, tenant_id")
+    .select("id, type, tenant_id, hooks")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -213,6 +215,22 @@ export async function POST(request: NextRequest, { params }: Params) {
   const collection = await resolveCollection(db, slug, tenantId);
   if (!collection) return apiErr("Collection not found", 404);
 
+  // Server-side field validation
+  const validation = await validateItemData(collection.id, body.data as Record<string, unknown>);
+  if (!validation.valid) {
+    return Response.json({ errors: validation.errors }, { status: 422 });
+  }
+
+  // onPreSave hook (blocks save on rejection)
+  const hooks = (collection.hooks ?? {}) as Record<string, unknown>;
+  if (hooks.on_pre_save) {
+    const blocked = await runPreSaveHook(
+      hooks.on_pre_save as Record<string, unknown>,
+      slug, tenantId, "create", body.data
+    );
+    if (blocked) return blocked;
+  }
+
   const itemTenantId = collection.type === "system" ? null : tenantId;
 
   const { data, error } = await db
@@ -254,6 +272,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (tErr) return apiErr(`Item created but translations failed: ${tErr.message}`, 207);
     }
   }
+
+  // Fire post-save webhooks after response (non-blocking)
+  after(() => fireWebhooks(tenantId, slug, "item.created", data as Record<string, unknown>));
 
   return Response.json({ data }, { status: 201 });
 }

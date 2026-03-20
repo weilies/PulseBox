@@ -169,6 +169,12 @@ export default async function SchemaPage({
         >
           Items
         </Link>
+        <Link
+          href={`/dashboard/studio/collections/${collection.slug}/webhooks`}
+          className="px-4 py-2 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+        >
+          Webhooks
+        </Link>
       </div>
 
       {/* Fields subtitle */}

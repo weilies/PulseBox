@@ -1,10 +1,12 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveApiContext, apiErr } from "../../../../_lib/api-auth";
+import { validateItemData } from "@/lib/collection-validation";
+import { fireWebhooks, runPreSaveHook } from "@/lib/webhooks";
 
 type Params = { params: Promise<{ slug: string; id: string }> };
 
 type ResolveItemResult =
-  | { ok: true; collection: { id: string; type: string; tenant_id: string | null }; item: Record<string, unknown> }
+  | { ok: true; collection: { id: string; type: string; tenant_id: string | null; hooks: Record<string, unknown> }; item: Record<string, unknown> }
   | { ok: false; error: string; status: 404 };
 
 async function resolveItem(
@@ -15,7 +17,7 @@ async function resolveItem(
 ): Promise<ResolveItemResult> {
   const { data: collection } = await db
     .from("collections")
-    .select("id, type, tenant_id")
+    .select("id, type, tenant_id, hooks")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -23,6 +25,7 @@ async function resolveItem(
   if (collection.type === "tenant" && collection.tenant_id !== tenantId) {
     return { ok: false, error: "Collection not found", status: 404 };
   }
+  const hooks = (collection.hooks ?? {}) as Record<string, unknown>;
 
   let q = db
     .from("collection_items")
@@ -37,7 +40,7 @@ async function resolveItem(
   const { data: item } = await q.maybeSingle();
   if (!item) return { ok: false, error: "Item not found", status: 404 };
 
-  return { ok: true, collection, item: item as Record<string, unknown> };
+  return { ok: true, collection: { ...collection, hooks }, item: item as Record<string, unknown> };
 }
 
 /**
@@ -144,6 +147,25 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const result = await resolveItem(db, slug, id, tenantId);
   if (!result.ok) return apiErr(result.error, result.status);
 
+  // Server-side field validation (isUpdate=true — only validates fields present in payload)
+  const validation = await validateItemData(
+    result.collection.id,
+    body.data as Record<string, unknown>,
+    true
+  );
+  if (!validation.valid) {
+    return Response.json({ errors: validation.errors }, { status: 422 });
+  }
+
+  // onPreSave hook
+  if (result.collection.hooks.on_pre_save) {
+    const blocked = await runPreSaveHook(
+      result.collection.hooks.on_pre_save as Record<string, unknown>,
+      slug, tenantId, "update", body.data, id
+    );
+    if (blocked) return blocked;
+  }
+
   const { data, error } = await db
     .from("collection_items")
     .update({ data: body.data, updated_by: userId, updated_at: new Date().toISOString() })
@@ -180,6 +202,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
+  // Fire post-save webhooks after response
+  after(() => fireWebhooks(tenantId, slug, "item.updated", data as Record<string, unknown>));
+
   return Response.json({ data });
 }
 
@@ -196,8 +221,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const result = await resolveItem(db, slug, id, tenantId);
   if (!result.ok) return apiErr(result.error, result.status);
 
+  const deletedItem = result.item;
   const { error } = await db.from("collection_items").delete().eq("id", id);
   if (error) return apiErr(error.message, 500);
+
+  // Fire post-delete webhooks after response
+  after(() => fireWebhooks(tenantId, slug, "item.deleted", deletedItem));
 
   return new Response(null, { status: 204 });
 }
