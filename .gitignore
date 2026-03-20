@@ -33,8 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
-# claude code
-.claude/
+# claude code — ignore settings (contains secrets) but track commands/skills
+.claude/*
+!.claude/commands
+!.claude/commands/**
 
 # vercel
 .vercel
