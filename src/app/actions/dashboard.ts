@@ -56,8 +56,23 @@ export async function setDefaultTenant(formData: FormData) {
 }
 
 // ---------------------------------------------------------------------------
-// Users — still using role text column (will switch to role_id in Phase 3)
+// Users — role text column + role_id UUID are both kept in sync
 // ---------------------------------------------------------------------------
+
+/** Resolve a role slug to its UUID in the roles table for a given tenant. */
+async function resolveRoleId(
+  db: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  roleSlug: string,
+): Promise<string | null> {
+  const { data } = await db
+    .from("roles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("slug", roleSlug)
+    .single();
+  return data?.id ?? null;
+}
 
 export async function createUser(formData: FormData) {
   const email = formData.get("email") as string;
@@ -81,13 +96,14 @@ export async function createUser(formData: FormData) {
   });
   if (authError) return { error: authError.message };
 
+  const roleId = await resolveRoleId(admin, tenantId, role);
   const { error: assignError } = await admin.from("tenant_users").insert([
-    { tenant_id: tenantId, user_id: authData.user.id, role, is_active: true, is_default: false },
+    { tenant_id: tenantId, user_id: authData.user.id, role, role_id: roleId, is_active: true, is_default: false },
   ]);
   if (assignError) return { error: `User created but tenant assignment failed: ${assignError.message}` };
 
   // Clean up auto-assigned super tenant if needed
-  const { data: superTenant } = await admin.from("tenants").select("id").eq("slug", "bipo").single();
+  const { data: superTenant } = await admin.from("tenants").select("id").eq("slug", "nextnovas").single();
   if (superTenant && superTenant.id !== tenantId) {
     await admin.from("tenant_users").delete().eq("user_id", authData.user.id).eq("tenant_id", superTenant.id);
   }
@@ -131,14 +147,16 @@ export async function assignUserToTenant(formData: FormData) {
   const role = formData.get("role") as string;
   if (!email || !tenantId || !role) return { error: "All fields are required" };
 
-  const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase
+  const db = createAdminClient();
+  const { data: userData, error: userError } = await db
     .from("profiles").select("id").eq("email", email).single();
   if (userError || !userData) return { error: "User not found" };
 
-  const { data, error } = await supabase.from("tenant_users").insert([
-    { user_id: userData.id, tenant_id: tenantId, role, is_active: true },
-  ]);
+  const roleId = await resolveRoleId(db, tenantId, role);
+  const { data, error } = await db.from("tenant_users").upsert(
+    [{ user_id: userData.id, tenant_id: tenantId, role, role_id: roleId }],
+    { onConflict: "tenant_id,user_id" }
+  );
   if (error) return { error: error.message };
   return { data };
 }
@@ -149,10 +167,11 @@ export async function updateUserRole(formData: FormData) {
   const role = formData.get("role") as string;
   if (!userId || !tenantId || !role) return { error: "All fields are required" };
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  const db = createAdminClient();
+  const roleId = await resolveRoleId(db, tenantId, role);
+  const { data, error } = await db
     .from("tenant_users")
-    .update({ role })
+    .update({ role, role_id: roleId })
     .eq("user_id", userId)
     .eq("tenant_id", tenantId);
   if (error) return { error: error.message };

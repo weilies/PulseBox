@@ -1,7 +1,8 @@
 import { NextRequest, after } from "next/server";
 import { resolveApiContext, apiErr, paginate } from "../../../_lib/api-auth";
 import { validateItemData } from "@/lib/collection-validation";
-import { fireWebhooks, runPreSaveHook } from "@/lib/webhooks";
+import { fireWebhooks, runPreSaveWebhooks, firePostSaveWebhooks } from "@/lib/webhooks";
+import { resolveDisplayLabels, resolveCatalogLabels } from "../../../_lib/display-resolve";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -154,6 +155,34 @@ export async function GET(request: NextRequest, { params }: Params) {
   const ascending = (sp.get("order") ?? "desc") === "asc";
   const locale = sp.get("locale") ?? undefined;
 
+  // Parent-child filtering: filter items where a child_of relation field = parent_id
+  const parentId = sp.get("parent_id") ?? undefined;
+  const parentField = sp.get("parent_field") ?? undefined;
+  // Effective dating: return only the "current" record (effective_date <= value, latest first)
+  const effectiveAsOf = sp.get("effective_as_of") ?? undefined;
+
+  // If parent_id is provided, resolve which field to filter on
+  let parentFieldSlug: string | undefined;
+  if (parentId) {
+    if (parentField) {
+      parentFieldSlug = parentField;
+    } else {
+      // Auto-detect: find the child_of relation field on this collection
+      const { data: childOfFields } = await db
+        .from("collection_fields")
+        .select("slug, options")
+        .eq("collection_id", collection.id)
+        .eq("field_type", "relation");
+
+      const childOfField = (childOfFields ?? []).find(
+        (f) => (f.options as Record<string, unknown>)?.relationship_style === "child_of"
+      );
+      if (childOfField) {
+        parentFieldSlug = childOfField.slug;
+      }
+    }
+  }
+
   let query = db
     .from("collection_items")
     .select("id, data, created_at, updated_at, created_by, updated_by", { count: "exact" })
@@ -165,10 +194,41 @@ export async function GET(request: NextRequest, { params }: Params) {
     query = query.eq("tenant_id", tenantId);
   }
 
-  const { data, error, count } = await query;
-  if (error) return apiErr(error.message, 500);
+  // Apply parent_id filter via JSONB
+  if (parentId && parentFieldSlug) {
+    query = query.eq(`data->>${parentFieldSlug}`, parentId);
+  }
 
+  const { data, error, count } = await query;
+
+  // Effective dating: if effective_as_of is set, filter to latest record per parent
   let items = (data ?? []) as Record<string, unknown>[];
+  if (effectiveAsOf && items.length > 0) {
+    // Look up the effective_date_field from collection metadata
+    const { data: collMeta } = await db
+      .from("collections")
+      .select("metadata")
+      .eq("id", collection.id)
+      .maybeSingle();
+    const effectiveDateField = (collMeta?.metadata as Record<string, unknown>)?.effective_date_field as string | undefined;
+
+    if (effectiveDateField) {
+      // Filter items where effective_date <= effectiveAsOf, then take the latest
+      items = items
+        .filter((item) => {
+          const itemData = item.data as Record<string, unknown>;
+          const dateVal = itemData[effectiveDateField] as string | undefined;
+          return dateVal && dateVal <= effectiveAsOf;
+        })
+        .sort((a, b) => {
+          const aDate = ((a.data as Record<string, unknown>)[effectiveDateField] as string) ?? "";
+          const bDate = ((b.data as Record<string, unknown>)[effectiveDateField] as string) ?? "";
+          return bDate.localeCompare(aDate); // DESC
+        })
+        .slice(0, 1);
+    }
+  }
+  if (error) return apiErr(error.message, 500);
 
   // Locale resolution
   if (locale && items.length > 0) {
@@ -183,6 +243,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     }
   }
 
+  // Display label resolution: adds _display map with human-readable labels for relation/catalog fields
+  const includeDisplay = sp.get("display") !== "false"; // on by default
+  if (includeDisplay && items.length > 0) {
+    items = await resolveDisplayLabels(db, collection.id, items);
+    items = await resolveCatalogLabels(db, collection.id, items);
+  }
+
   const meta: Record<string, unknown> = {
     page,
     limit,
@@ -191,7 +258,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   };
   if (locale && locale !== "*") meta.locale = locale;
 
-  return Response.json({ data: items, meta });
+  return Response.json({ data: items, meta }, { headers: auth.ctx.rlHeaders });
 }
 
 /**
@@ -215,30 +282,25 @@ export async function POST(request: NextRequest, { params }: Params) {
   const collection = await resolveCollection(db, slug, tenantId);
   if (!collection) return apiErr("Collection not found", 404);
 
-  // Server-side field validation
-  const validation = await validateItemData(collection.id, body.data as Record<string, unknown>);
+  // Server-side field validation (also normalizes datetime values to UTC ISO)
+  const validation = await validateItemData(collection.id, body.data as Record<string, unknown>, false, undefined, tenantId);
   if (!validation.valid) {
     return Response.json({ errors: validation.errors }, { status: 422 });
   }
+  const itemData = validation.normalizedData;
 
-  // onPreSave hook (blocks save on rejection)
-  const hooks = (collection.hooks ?? {}) as Record<string, unknown>;
-  if (hooks.on_pre_save) {
-    const blocked = await runPreSaveHook(
-      hooks.on_pre_save as Record<string, unknown>,
-      slug, tenantId, "create", body.data
-    );
-    if (blocked) return blocked;
-  }
+  // Pre-save webhooks (can block the save)
+  const blocked = await runPreSaveWebhooks(tenantId, slug, "create", itemData);
+  if (blocked) return blocked;
 
-  const itemTenantId = collection.type === "system" ? null : tenantId;
+  const itemTenantId = tenantId;
 
   const { data, error } = await db
     .from("collection_items")
     .insert({
       collection_id: collection.id,
       tenant_id: itemTenantId,
-      data: body.data,
+      data: itemData,
       created_by: userId,
       updated_by: userId,
     })
@@ -274,7 +336,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // Fire post-save webhooks after response (non-blocking)
-  after(() => fireWebhooks(tenantId, slug, "item.created", data as Record<string, unknown>));
+  after(() => {
+    fireWebhooks(tenantId, slug, "item.created", data as Record<string, unknown>);
+    firePostSaveWebhooks(tenantId, slug, "create", data as Record<string, unknown>, (data as Record<string, unknown>).id as string);
+  });
 
-  return Response.json({ data }, { status: 201 });
+  return Response.json({ data }, { status: 201, headers: auth.ctx.rlHeaders });
 }

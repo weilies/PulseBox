@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { data: collection, error } = await db
     .from("collections")
     .select(`
-      id, slug, name, description, icon, type, tenant_id, created_at, updated_at,
+      id, slug, name, description, icon, type, tenant_id, metadata, created_at, updated_at,
       collection_fields (
         id, slug, name, field_type, options, is_required, is_unique, sort_order
       )
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const fields = [...(collection.collection_fields as Array<Record<string, unknown>>)]
     .sort((a, b) => (a.sort_order as number) - (b.sort_order as number));
 
-  return Response.json({ data: { ...collection, collection_fields: fields } });
+  return Response.json({ data: { ...collection, collection_fields: fields } }, { headers: auth.ctx.rlHeaders });
 }
 
 /**
@@ -69,15 +69,33 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (body.description !== undefined) updates.description = (body.description as string)?.trim() || null;
   if (body.icon !== undefined) updates.icon = (body.icon as string)?.trim() || null;
 
+  // Merge metadata (partial update — only overwrite provided keys)
+  if (body.metadata && typeof body.metadata === "object") {
+    const allowedKeys = ["display_key_fields", "unique_constraints", "effective_date_field", "cascade_rules", "child_tab_sort_order"];
+    const { data: current } = await db
+      .from("collections")
+      .select("metadata")
+      .eq("id", collection.id)
+      .maybeSingle();
+
+    const existingMeta = (current?.metadata ?? {}) as Record<string, unknown>;
+    const newMeta = body.metadata as Record<string, unknown>;
+    const merged = { ...existingMeta };
+    for (const key of allowedKeys) {
+      if (newMeta[key] !== undefined) merged[key] = newMeta[key];
+    }
+    updates.metadata = merged;
+  }
+
   const { data, error } = await db
     .from("collections")
     .update(updates)
     .eq("id", collection.id)
-    .select("id, slug, name, description, icon, type, updated_at")
+    .select("id, slug, name, description, icon, type, metadata, updated_at")
     .single();
 
   if (error) return apiErr(error.message, 500);
-  return Response.json({ data });
+  return Response.json({ data }, { headers: auth.ctx.rlHeaders });
 }
 
 /**

@@ -69,11 +69,14 @@ export async function POST(request: NextRequest) {
     // Sign JWT
     const accessToken = await signAppToken(app.tenant_id, app_id);
 
-    return Response.json({
-      access_token: accessToken,
-      token_type: "Bearer",
-      expires_in: 3600,
-    });
+    return Response.json(
+      {
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: 3600,
+      },
+      { headers: rateLimitHeaders(rl.remaining, rl.resetAt) }
+    );
   } catch {
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }

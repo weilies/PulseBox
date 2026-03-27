@@ -60,30 +60,43 @@ export async function deleteTenant(supabase: SupabaseClient, tenantId: string) {
 
   const userIds = (tenantUsers ?? []).map((r: { user_id: string }) => r.user_id);
 
-  // 2. For each user, check if they belong to any OTHER tenant
+  // 2. Find users who belong ONLY to this tenant (single batch query instead of N+1)
   const usersToDelete: string[] = [];
-  for (const userId of userIds) {
-    const { count } = await admin
+  if (userIds.length > 0) {
+    const { data: usersWithOtherTenants } = await admin
       .from("tenant_users")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
+      .select("user_id")
+      .in("user_id", userIds)
       .neq("tenant_id", tenantId);
-    if ((count ?? 0) === 0) {
-      usersToDelete.push(userId);
+    const usersInOtherTenants = new Set((usersWithOtherTenants ?? []).map((r: { user_id: string }) => r.user_id));
+    for (const userId of userIds) {
+      if (!usersInOtherTenants.has(userId)) usersToDelete.push(userId);
     }
   }
 
-  // 3. Delete the tenant (cascades tenant_users via FK)
-  const { error: deleteError } = await supabase
+  // 3. Delete collection_items BEFORE deleting the tenant.
+  //    The audit trigger on collection_items fires on DELETE and inserts into
+  //    collection_items_audit — if we let the tenant cascade handle this, the
+  //    tenant row is already gone when the trigger runs, causing a FK violation.
+  //    Deleting items explicitly first keeps the tenant alive for the trigger.
+  const { error: itemsDeleteError } = await admin
+    .from("collection_items")
+    .delete()
+    .eq("tenant_id", tenantId);
+  if (itemsDeleteError) return { error: itemsDeleteError.message };
+
+  // 4. Delete leftover audit records (tenant still alive at this point).
+  await admin.from("collection_items_audit").delete().eq("tenant_id", tenantId);
+
+  // 5. Delete the tenant (cascades tenant_users, collections, webhooks, etc.)
+  const { error: deleteError } = await admin
     .from("tenants")
     .delete()
     .eq("id", tenantId);
   if (deleteError) return { error: deleteError.message };
 
-  // 4. Hard-delete users who were only in this tenant
-  for (const userId of usersToDelete) {
-    await admin.auth.admin.deleteUser(userId);
-  }
+  // 6. Hard-delete users who were only in this tenant (concurrent)
+  await Promise.all(usersToDelete.map((userId) => admin.auth.admin.deleteUser(userId)));
 
   return { data: true };
 }

@@ -1,7 +1,8 @@
 import { NextRequest, after } from "next/server";
 import { resolveApiContext, apiErr } from "../../../../_lib/api-auth";
 import { validateItemData } from "@/lib/collection-validation";
-import { fireWebhooks, runPreSaveHook } from "@/lib/webhooks";
+import { fireWebhooks, runPreSaveWebhooks, firePostSaveWebhooks } from "@/lib/webhooks";
+import { resolveDisplayLabelsForItem, resolveDisplayLabels, resolveCatalogLabels } from "../../../../_lib/display-resolve";
 
 type Params = { params: Promise<{ slug: string; id: string }> };
 
@@ -60,9 +61,103 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!result.ok) return apiErr(result.error, result.status);
 
   const locale = request.nextUrl.searchParams.get("locale") ?? undefined;
+  const includeChildren = request.nextUrl.searchParams.get("include_children") === "true";
+
+  // Resolve child collections if requested
+  let childrenData: Record<string, { items: Record<string, unknown>[]; total: number }> | undefined;
+  if (includeChildren) {
+    // Find all collections that have a child_of relation field pointing to this collection
+    const { data: allRelFields } = await db
+      .from("collection_fields")
+      .select("collection_id, slug, options")
+      .eq("field_type", "relation");
+
+    const childLinks: { collectionId: string; fieldSlug: string }[] = [];
+    for (const f of allRelFields ?? []) {
+      const opts = f.options as Record<string, unknown>;
+      if (
+        opts?.relationship_style === "child_of" &&
+        opts?.related_collection_id === result.collection.id
+      ) {
+        childLinks.push({ collectionId: f.collection_id, fieldSlug: f.slug });
+      }
+    }
+
+    if (childLinks.length > 0) {
+      childrenData = {};
+      // Fetch child collection slugs
+      const childColIds = childLinks.map((c) => c.collectionId);
+      const { data: childCols } = await db
+        .from("collections")
+        .select("id, slug, metadata")
+        .in("id", childColIds);
+
+      const colSlugMap = new Map((childCols ?? []).map((c) => [c.id, c.slug]));
+
+      await Promise.all(
+        childLinks.map(async (link) => {
+          const childSlug = colSlugMap.get(link.collectionId);
+          if (!childSlug) return;
+
+          let q = db
+            .from("collection_items")
+            .select("id, data, created_at, updated_at", { count: "exact" })
+            .eq("collection_id", link.collectionId)
+            .eq(`data->>${link.fieldSlug}`, id)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+          // Tenant scoping: check if child collection is tenant-scoped
+          const childCol = (childCols ?? []).find((c) => c.id === link.collectionId);
+          if (childCol) {
+            // We don't have type on the select — check via tenantId filter (safe: RLS handles it)
+            q = q.eq("tenant_id", tenantId);
+          }
+
+          const { data: childItems, count } = await q;
+          childrenData![childSlug] = {
+            items: (childItems ?? []) as Record<string, unknown>[],
+            total: count ?? 0,
+          };
+        })
+      );
+    }
+  }
+
+  // Resolve _display labels for the main item
+  const includeDisplay = request.nextUrl.searchParams.get("display") !== "false";
+  let resolvedItem = result.item;
+  if (includeDisplay) {
+    resolvedItem = await resolveDisplayLabelsForItem(db, result.collection.id, result.item);
+  }
+
+  // Resolve _display in child items too
+  if (includeDisplay && childrenData) {
+    const childColSlugs = Object.keys(childrenData);
+    if (childColSlugs.length > 0) {
+      // Get collection IDs for child slugs
+      const { data: childColRows } = await db
+        .from("collections")
+        .select("id, slug")
+        .in("slug", childColSlugs);
+      const slugToId = new Map((childColRows ?? []).map((c) => [c.slug, c.id]));
+
+      await Promise.all(
+        childColSlugs.map(async (childSlug) => {
+          const colId = slugToId.get(childSlug);
+          if (!colId) return;
+          let resolvedChildren = await resolveDisplayLabels(db, colId, childrenData[childSlug].items);
+          resolvedChildren = await resolveCatalogLabels(db, colId, resolvedChildren);
+          childrenData[childSlug].items = resolvedChildren;
+        })
+      );
+    }
+  }
 
   if (!locale) {
-    return Response.json({ data: result.item });
+    const responseData: Record<string, unknown> = { data: resolvedItem };
+    if (childrenData) responseData._children = childrenData;
+    return Response.json(responseData, { headers: auth.ctx.rlHeaders });
   }
 
   // Fetch translations for this item
@@ -88,9 +183,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       grouped[t.language_code][t.field_slug] = t.value;
     }
     const item = Object.keys(grouped).length > 0
-      ? { ...result.item, _translations: grouped }
-      : result.item;
-    return Response.json({ data: item });
+      ? { ...resolvedItem, _translations: grouped }
+      : resolvedItem;
+    const resp: Record<string, unknown> = { data: item };
+    if (childrenData) resp._children = childrenData;
+    return Response.json(resp, { headers: auth.ctx.rlHeaders });
   }
 
   // Merge specific locale into data (fallback chain)
@@ -102,7 +199,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     .eq("is_translatable", true);
 
   const fieldSlugs = new Set((translatableFields ?? []).map((f) => f.slug));
-  const data = { ...(result.item.data as Record<string, unknown>) };
+  const data = { ...(resolvedItem.data as Record<string, unknown>) };
 
   // Build lookup: fieldSlug → { locale: value }
   const localeMap = new Map<string, Map<string, string | null>>();
@@ -120,10 +217,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     }
   }
 
-  return Response.json({
-    data: { ...result.item, data },
+  const finalResp: Record<string, unknown> = {
+    data: { ...resolvedItem, data },
     meta: { locale },
-  });
+  };
+  if (childrenData) finalResp._children = childrenData;
+  return Response.json(finalResp, { headers: auth.ctx.rlHeaders });
 }
 
 /**
@@ -147,28 +246,26 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const result = await resolveItem(db, slug, id, tenantId);
   if (!result.ok) return apiErr(result.error, result.status);
 
-  // Server-side field validation (isUpdate=true — only validates fields present in payload)
+  // Server-side field validation (isUpdate=true — also normalizes datetime values to UTC ISO)
   const validation = await validateItemData(
     result.collection.id,
     body.data as Record<string, unknown>,
-    true
+    true,
+    id,
+    tenantId
   );
   if (!validation.valid) {
     return Response.json({ errors: validation.errors }, { status: 422 });
   }
+  const itemData = validation.normalizedData;
 
-  // onPreSave hook
-  if (result.collection.hooks.on_pre_save) {
-    const blocked = await runPreSaveHook(
-      result.collection.hooks.on_pre_save as Record<string, unknown>,
-      slug, tenantId, "update", body.data, id
-    );
-    if (blocked) return blocked;
-  }
+  // Pre-save webhooks (can block the save)
+  const blocked = await runPreSaveWebhooks(tenantId, slug, "update", itemData, id);
+  if (blocked) return blocked;
 
   const { data, error } = await db
     .from("collection_items")
-    .update({ data: body.data, updated_by: userId, updated_at: new Date().toISOString() })
+    .update({ data: itemData, updated_by: userId, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("id, data, updated_at")
     .single();
@@ -178,7 +275,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // Upsert translations if provided
   const translations = body.translations as Record<string, Record<string, string>> | undefined;
   if (translations && typeof translations === "object") {
-    const itemTenantId = result.collection.type === "system" ? null : tenantId;
+    const itemTenantId = tenantId;
     const rows = [];
     for (const [langCode, fields] of Object.entries(translations)) {
       for (const [fieldSlug, value] of Object.entries(fields)) {
@@ -202,10 +299,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
-  // Fire post-save webhooks after response
-  after(() => fireWebhooks(tenantId, slug, "item.updated", data as Record<string, unknown>));
+  // Fire post-save webhooks after response (non-blocking)
+  after(() => {
+    fireWebhooks(tenantId, slug, "item.updated", data as Record<string, unknown>);
+    firePostSaveWebhooks(tenantId, slug, "update", data as Record<string, unknown>, id);
+  });
 
-  return Response.json({ data });
+  return Response.json({ data }, { headers: auth.ctx.rlHeaders });
 }
 
 /**
@@ -222,11 +322,87 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (!result.ok) return apiErr(result.error, result.status);
 
   const deletedItem = result.item;
+
+  // Cascade rule enforcement: check if this item is a parent to any child collections
+  const { data: allRelFields } = await db
+    .from("collection_fields")
+    .select("collection_id, slug, options")
+    .eq("field_type", "relation");
+
+  const childLinks: { collectionId: string; fieldSlug: string; collectionSlug?: string }[] = [];
+  for (const f of allRelFields ?? []) {
+    const opts = f.options as Record<string, unknown>;
+    if (
+      opts?.relationship_style === "child_of" &&
+      opts?.related_collection_id === result.collection.id
+    ) {
+      childLinks.push({ collectionId: f.collection_id, fieldSlug: f.slug });
+    }
+  }
+
+  if (childLinks.length > 0) {
+    // Look up cascade rules from this collection's metadata
+    const { data: parentCol } = await db
+      .from("collections")
+      .select("metadata")
+      .eq("id", result.collection.id)
+      .maybeSingle();
+
+    const metadata = (parentCol?.metadata ?? {}) as Record<string, unknown>;
+    const cascadeRules = (metadata.cascade_rules ?? {}) as Record<string, unknown>;
+    const onDelete = (cascadeRules.on_parent_delete as string) ?? "restrict";
+
+    for (const link of childLinks) {
+      // Count child items referencing this parent
+      const { count: childCount } = await db
+        .from("collection_items")
+        .select("id", { count: "exact", head: true })
+        .eq("collection_id", link.collectionId)
+        .eq(`data->>${link.fieldSlug}`, id);
+
+      if (childCount && childCount > 0) {
+        if (onDelete === "restrict") {
+          return apiErr(
+            `Cannot delete: ${childCount} child record(s) exist. Remove child records first or change cascade rule to "cascade".`,
+            409
+          );
+        } else if (onDelete === "cascade") {
+          // Delete all child items referencing this parent
+          await db
+            .from("collection_items")
+            .delete()
+            .eq("collection_id", link.collectionId)
+            .eq(`data->>${link.fieldSlug}`, id);
+        } else if (onDelete === "nullify") {
+          // Set the parent reference to null on child items
+          // Since data is JSONB, we need to update each child item individually
+          const { data: childItems } = await db
+            .from("collection_items")
+            .select("id, data")
+            .eq("collection_id", link.collectionId)
+            .eq(`data->>${link.fieldSlug}`, id);
+
+          for (const child of childItems ?? []) {
+            const childData = { ...(child.data as Record<string, unknown>) };
+            delete childData[link.fieldSlug];
+            await db
+              .from("collection_items")
+              .update({ data: childData })
+              .eq("id", child.id);
+          }
+        }
+      }
+    }
+  }
+
   const { error } = await db.from("collection_items").delete().eq("id", id);
   if (error) return apiErr(error.message, 500);
 
-  // Fire post-delete webhooks after response
-  after(() => fireWebhooks(tenantId, slug, "item.deleted", deletedItem));
+  // Fire post-delete webhooks after response (non-blocking)
+  after(() => {
+    fireWebhooks(tenantId, slug, "item.deleted", deletedItem);
+    firePostSaveWebhooks(tenantId, slug, "delete", deletedItem, id);
+  });
 
   return new Response(null, { status: 204 });
 }

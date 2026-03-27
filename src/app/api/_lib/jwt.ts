@@ -29,7 +29,7 @@ export async function signAppToken(tenantId: string, appId: string): Promise<str
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(TOKEN_EXPIRY)
-    .setIssuer("pulseboard")
+    .setIssuer("pulsebox")
     .sign(getSecret());
 }
 
@@ -38,7 +38,7 @@ export async function signAppToken(tenantId: string, appId: string): Promise<str
  */
 export async function verifyAppToken(token: string): Promise<AppTokenPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret(), { issuer: "pulseboard" });
+    const { payload } = await jwtVerify(token, getSecret(), { issuer: "pulsebox" });
     if (payload.mode !== "app" || !payload.tenant_id || !payload.app_id) return null;
     return payload as AppTokenPayload;
   } catch {

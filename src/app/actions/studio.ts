@@ -29,13 +29,14 @@ export async function createCollection(formData: FormData) {
   const tenantId = type === "tenant" ? await resolveTenant(user.id) : null;
   if (type === "tenant" && !tenantId) return { error: "No active tenant" };
 
-  // For system collections: verify super_admin with user client, then write via admin client to bypass RLS
+  // For system collections: verify super_admin role
   if (type === "system") {
     const { data: isSA } = await supabase.rpc("is_super_admin");
     if (!isSA) return { error: "Only super admins can create system collections" };
   }
 
-  const writeClient = type === "system" ? createAdminClient() : supabase;
+  // Use admin client to bypass RLS INSERT policy (auth is validated above)
+  const writeClient = createAdminClient();
 
   const result = await CollectionsService.createCollection(writeClient, {
     name, description, icon, type: type as "system" | "tenant", userId: user.id, tenantId,
@@ -107,6 +108,46 @@ export async function deleteCollection(formData: FormData) {
   return { data: true };
 }
 
+/**
+ * Update collection metadata (display_key_fields, unique_constraints, effective_date_field, cascade_rules).
+ */
+export async function updateCollectionMetadata(
+  collectionId: string,
+  metadata: Record<string, unknown>
+) {
+  if (!collectionId) return { error: "Collection ID is required" };
+
+  const user = await getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  // Validate metadata shape
+  const allowed = ["display_key_fields", "unique_constraints", "effective_date_field", "cascade_rules", "child_tab_sort_order"];
+  const cleaned: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (metadata[key] !== undefined) cleaned[key] = metadata[key];
+  }
+
+  const supabase = await createClient();
+
+  // Merge with existing metadata (don't clobber keys not sent)
+  const { data: existing } = await supabase
+    .from("collections")
+    .select("metadata")
+    .eq("id", collectionId)
+    .maybeSingle();
+
+  const merged = { ...((existing?.metadata ?? {}) as Record<string, unknown>), ...cleaned };
+
+  const { error } = await supabase
+    .from("collections")
+    .update({ metadata: merged, updated_at: new Date().toISOString() })
+    .eq("id", collectionId);
+
+  if (error) return { error: error.message };
+  revalidatePath("/dashboard/studio");
+  return { data: true };
+}
+
 // ---------------------------------------------------------------------------
 // Fields
 // ---------------------------------------------------------------------------
@@ -143,6 +184,34 @@ export async function createField(formData: FormData) {
   if (result.error) return { error: result.error };
   revalidatePath(`/dashboard/studio/collections/${collectionSlug}/schema`);
   return { data: result.data };
+}
+
+export async function updateField(formData: FormData) {
+  const fieldId = formData.get("field_id") as string;
+  const collectionSlug = formData.get("collection_slug") as string;
+  const isRequired = formData.get("is_required") === "true";
+  const isUnique = formData.get("is_unique") === "true";
+  const isTranslatable = formData.get("is_translatable") === "true";
+  const optionsRaw = formData.get("options") as string;
+
+  if (!fieldId) return { error: "Field ID is required" };
+
+  let options: Record<string, unknown> = {};
+  try {
+    options = optionsRaw ? JSON.parse(optionsRaw) : {};
+  } catch {
+    return { error: "Invalid field options format" };
+  }
+
+  const user = await getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const supabase = await createClient();
+  const result = await FieldsService.updateField(supabase, fieldId, { isRequired, isUnique, isTranslatable, options });
+
+  if (result.error) return { error: result.error };
+  revalidatePath(`/dashboard/studio/collections/${collectionSlug}/schema`);
+  return { data: true };
 }
 
 export async function deleteField(formData: FormData) {
@@ -235,8 +304,11 @@ export async function updateItem(formData: FormData) {
   try { data = JSON.parse(dataRaw); }
   catch { return { error: "Invalid data format" }; }
 
+  const tenantId = await resolveTenant(user.id);
+  if (!tenantId) return { error: "No active tenant" };
+
   const supabase = await createClient();
-  const result = await ItemsService.updateItem(supabase, { itemId, data, userId: user.id });
+  const result = await ItemsService.updateItem(supabase, { itemId, data, userId: user.id, tenantId });
 
   if (result.error) return { error: result.error };
   revalidatePath(`/dashboard/studio/collections/${collectionSlug}/items`);
@@ -248,8 +320,13 @@ export async function deleteItem(formData: FormData) {
   const collectionSlug = formData.get("collection_slug") as string;
   if (!itemId) return { error: "Item ID is required" };
 
+  const user = await getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const tenantId = await resolveTenant(user.id);
+
   const supabase = await createClient();
-  const result = await ItemsService.deleteItem(supabase, itemId);
+  const result = await ItemsService.deleteItem(supabase, itemId, tenantId ?? undefined);
 
   if (result.error) return { error: result.error };
   revalidatePath(`/dashboard/studio/collections/${collectionSlug}/items`);
@@ -269,6 +346,70 @@ export async function exportItems(collectionSlug: string) {
 
   const supabase = await createClient();
   return ItemsService.exportItems(supabase, { collectionSlug, tenantId });
+}
+
+// ---------------------------------------------------------------------------
+// Form Layout
+// ---------------------------------------------------------------------------
+
+export async function saveFormLayout(
+  collectionId: string,
+  layout: import("@/types/form-layout").FormLayout
+) {
+  const user = await getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const supabase = await createClient();
+
+  const { data: col, error: fetchErr } = await supabase
+    .from("collections")
+    .select("metadata, slug")
+    .eq("id", collectionId)
+    .single();
+
+  if (fetchErr || !col) return { error: "Collection not found" };
+
+  const newMeta = { ...(col.metadata ?? {}), form_layout: layout };
+
+  const { error } = await supabase
+    .from("collections")
+    .update({ metadata: newMeta })
+    .eq("id", collectionId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/dashboard/studio/collections/${col.slug}/form`);
+  revalidatePath(`/dashboard/studio/collections/${col.slug}/items`);
+  return { data: true };
+}
+
+export async function toggleFieldShowInGrid(fieldId: string, showInGrid: boolean) {
+  const user = await getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const supabase = await createClient();
+
+  const { data: field, error: fetchErr } = await supabase
+    .from("collection_fields")
+    .select("id, collections(slug)")
+    .eq("id", fieldId)
+    .single();
+
+  if (fetchErr || !field) return { error: "Field not found" };
+
+  const { error } = await supabase
+    .from("collection_fields")
+    .update({ show_in_grid: showInGrid })
+    .eq("id", fieldId);
+
+  if (error) return { error: error.message };
+
+  const slug = (field.collections as unknown as { slug: string } | null)?.slug;
+  if (slug) {
+    revalidatePath(`/dashboard/studio/collections/${slug}/schema`);
+    revalidatePath(`/dashboard/studio/collections/${slug}/items`);
+  }
+  return { data: true };
 }
 
 export async function importItems(

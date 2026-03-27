@@ -49,7 +49,7 @@
 }
 
 :root {
-  /* PulseBoard Brand */
+  /* PulseBox Brand */
   --pb-blue:      #2563eb;
   --pb-blue-lt:   #3b82f6;
   --pb-blue-bg:   #eff6ff;
@@ -97,6 +97,51 @@
   --sidebar-ring:         #2563eb;
 }
 
+.dark {
+  --pb-blue:      #3b82f6;
+  --pb-blue-lt:   #60a5fa;
+  --pb-blue-bg:   #1e293b;
+  --pb-border:    #334155;
+
+  --neon-cyan:    #3b82f6;
+  --neon-purple:  #a78bfa;
+  --neon-blue:    #60a5fa;
+  --neon-pink:    #f472b6;
+  --neon-lime:    #4ade80;
+
+  --background:           oklch(0.13 0 0);
+  --foreground:           oklch(0.95 0 0);
+  --card:                 oklch(0.17 0 0);
+  --card-foreground:      oklch(0.95 0 0);
+  --popover:              oklch(0.17 0 0);
+  --popover-foreground:   oklch(0.95 0 0);
+  --primary:              #3b82f6;
+  --primary-foreground:   oklch(1 0 0);
+  --secondary:            oklch(0.22 0 0);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted:                oklch(0.22 0 0);
+  --muted-foreground:     oklch(0.6 0 0);
+  --accent:               oklch(0.22 0 0);
+  --accent-foreground:    oklch(0.9 0 0);
+  --destructive:          oklch(0.577 0.245 27.325);
+  --border:               oklch(0.3 0 0);
+  --input:                oklch(0.3 0 0);
+  --ring:                 #3b82f6;
+  --chart-1:              #60a5fa;
+  --chart-2:              #3b82f6;
+  --chart-3:              #a78bfa;
+  --chart-4:              #c4b5fd;
+  --chart-5:              #4ade80;
+  --sidebar:              oklch(0.15 0 0);
+  --sidebar-foreground:   oklch(0.9 0 0);
+  --sidebar-primary:      #3b82f6;
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent:       oklch(0.22 0 0);
+  --sidebar-accent-foreground:  oklch(0.9 0 0);
+  --sidebar-border:       oklch(0.3 0 0);
+  --sidebar-ring:         #3b82f6;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -119,7 +164,7 @@
 
   code, pre {
     font-family: 'IBM Plex Mono', var(--font-geist-mono), monospace;
-    @apply bg-gray-50 text-gray-800 rounded text-sm;
+    @apply bg-gray-50 text-gray-800 rounded text-sm dark:bg-gray-800 dark:text-gray-200;
   }
 }
 
@@ -133,19 +178,19 @@
 
 /* Utility Classes */
 .glow-card {
-  @apply bg-white border border-gray-200 rounded-xl shadow-sm transition-shadow duration-200;
+  @apply bg-white border border-gray-200 rounded-xl shadow-sm transition-shadow duration-200 dark:bg-gray-900 dark:border-gray-700;
 }
 
 .glow-card:hover {
-  @apply shadow-md border-blue-200;
+  @apply shadow-md border-blue-200 dark:border-blue-500/40;
 }
 
 .glow-border {
-  @apply border border-gray-200;
+  @apply border border-gray-200 dark:border-gray-700;
 }
 
 .glow-border:hover {
-  @apply border-blue-300;
+  @apply border-blue-300 dark:border-blue-500;
 }
 
 .btn-neon {
@@ -153,15 +198,15 @@
 }
 
 .glass-effect {
-  @apply bg-white/80 backdrop-blur-sm border border-gray-200;
+  @apply bg-white/80 backdrop-blur-sm border border-gray-200 dark:bg-gray-900/80 dark:border-gray-700;
 }
 
 .glassmorphism {
-  @apply bg-white/70 backdrop-blur-md border border-gray-200;
+  @apply bg-white/70 backdrop-blur-md border border-gray-200 dark:bg-gray-900/70 dark:border-gray-700;
 }
 
-.neon-cyan   { @apply text-blue-600; }
-.neon-purple { @apply text-violet-600; }
-.neon-blue   { @apply text-blue-500; }
+.neon-cyan   { @apply text-blue-600 dark:text-blue-400; }
+.neon-purple { @apply text-violet-600 dark:text-violet-400; }
+.neon-blue   { @apply text-blue-500 dark:text-blue-400; }
 .text-glow   { /* no-op in light theme */ }
 .pulse-glow  { /* no-op in light theme */ }

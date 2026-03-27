@@ -2,7 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUser, getUserRole } from "@/lib/auth";
-import { getCurrentTenantId } from "@/lib/tenant";
+import { resolveTenant } from "@/lib/tenant";
 import { randomBytes, createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 
@@ -29,7 +29,7 @@ async function requireAdmin() {
   const user = await getUser();
   if (!user) return { error: "Not authenticated" as const };
 
-  const tenantId = await getCurrentTenantId();
+  const tenantId = await resolveTenant(user.id);
   if (!tenantId) return { error: "No active tenant" as const };
 
   const role = await getUserRole(user.id, tenantId);

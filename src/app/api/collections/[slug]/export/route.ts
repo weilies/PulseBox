@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         return acc;
       }, {}),
     }));
-    return Response.json({ collection: collectionName, total: rows.length, data: rows });
+    return Response.json({ collection: collectionName, total: rows.length, data: rows }, { headers: auth.ctx.rlHeaders });
   }
 
   // CSV

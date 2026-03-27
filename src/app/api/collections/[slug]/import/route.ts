@@ -63,5 +63,5 @@ export async function POST(request: NextRequest, { params }: Params) {
     return apiErr(result.error, status);
   }
 
-  return Response.json({ data: result.data }, { status: 201 });
+  return Response.json({ data: result.data }, { status: 201, headers: auth.ctx.rlHeaders });
 }

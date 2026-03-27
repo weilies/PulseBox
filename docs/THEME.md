@@ -1,7 +1,7 @@
-# PulseBoard Cyberpunk Theme Documentation
+# PulseBox Cyberpunk Theme Documentation
 
 ## Overview
-PulseBoard features a **futuristic cyberpunk dark theme** with neon accents, glassmorphism effects, and smooth animations. The theme is built with Tailwind CSS, CSS variables, and custom animations.
+PulseBox features a **futuristic cyberpunk dark theme** with neon accents, glassmorphism effects, and smooth animations. The theme is built with Tailwind CSS, CSS variables, and custom animations.
 
 ---
 

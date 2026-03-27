@@ -1,7 +1,7 @@
 # Bug Fix Plan — 18 Mar 2026
 
-> Source: `PulseBoard Bug Report.pdf` (attached in chat)
-> Status tracking: see TASKS.md
+> Source: `PulseBox Bug Report.pdf` (attached in chat)
+> Status tracking: see [TASKS.md](TASKS.md)
 
 ---
 
@@ -12,12 +12,12 @@
 | 1a | Header avatar dropdown | Remove star from Current Tenant section | Easy | ✅ Done |
 | 1b | Header avatar dropdown | Toast should say "Default tenant updated to 'X'" | Easy | ✅ Done |
 | 1c | Header avatar dropdown | Default tenant star not filled (no refresh after setDefault) | Easy | ✅ Done |
-| 1d | Header avatar dropdown | Allow avatar upload (rounded) | Medium | 🕐 Awaiting user decision |
+| 1d | Header avatar dropdown | Allow avatar upload (rounded) | Medium | ✅ Done |
 | 2  | Language switcher | Full UI i18n (nav, widgets, forms — EN/JP/CN) | Complex | 🕐 Awaiting user decision |
 | 3  | Policies page | Unable to edit policy (no edit action + no detail page) | Medium | ✅ Done |
 | 4a | Collection items grid | Show filename instead of UUID in file field cells | Easy | ✅ Done |
 | 4b | Collection items grid | Files not viewable/downloadable from grid | Easy | ✅ Done |
-| 4c | User timezone | Add timezone to profile, render datetime in local TZ | Medium | 🕐 Awaiting user decision |
+| 4c | User timezone | Add timezone to profile, render datetime in local TZ | Medium | ✅ Done |
 | 5  | Login page | Console TypeError: Failed to fetch (signInWithPassword) | Investigate | 🕐 Need env check |
 | 6a | Tenant forms | Add Person In Charge (name + email) fields | Medium | ✅ Done |
 | 6b | All forms | Compulsory fields must end with "*" | Easy | ✅ Done |
@@ -33,11 +33,8 @@
 - Pass tenant name to `handleSetDefault`, update toast message
 - Add `router.refresh()` after successful setDefaultTenant
 
-### Bug 1d (Avatar Upload — Pending)
-Questions for user:
-- Store in existing `collection-files` bucket or new `avatars` bucket?
-- Should avatar also appear in Security > Users > Edit User?
-- Should we use a Supabase Storage migration for the avatars bucket?
+### Bug 1d (Avatar Upload — Done)
+- Resolved. Users can upload a profile avatar (rounded) from their account menu.
 
 ### Bug 2 (i18n — Pending)
 Scope is very large. Options:
@@ -53,12 +50,8 @@ User needs to decide scope and priority pages.
 - `renderCellValue` in items page: add `case "file"` to extract filename from path
 - Add download link (signed URL button) in a new client component for file cells in the grid
 
-### Bug 4c (Timezone — Pending)
-Questions for user:
-- Add `timezone` column to `profiles` table via DB migration?
-- Default to browser's detected timezone if not set?
-- Where should users configure their timezone? (Profile settings page? User system collection?)
-- Datetime fields in collection items grid: render server-side (Server Component) or client-side?
+### Bug 4c (Timezone — Done)
+- Resolved. Timezone stored on user profile; datetimes render in user's local timezone.
 
 ### Bug 5 (Console Error — Investigate)
 - Error: `TypeError: Failed to fetch` at `signInWithPassword`
@@ -88,6 +81,6 @@ Questions for user:
 ## Resumption Guide
 
 If token cap hits, resume by:
-1. Check TASKS.md for current `In Progress` item
+1. Check [TASKS.md](TASKS.md) for current `In Progress` item
 2. Read BUG_FIX_PLAN.md status column (✅/🕐/❌)
 3. Pick next `🕐 Pending` item with decisions resolved

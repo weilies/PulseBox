@@ -1,4 +1,4 @@
-# STUDIO_PLAN.md — PulseBoard Studio Architecture
+# STUDIO_PLAN.md — PulseBox Studio Architecture
 
 > **This is the implementation blueprint for Studio.** Any AI session working on Studio should read this first.
 > **Last updated: 2026-03-15**
@@ -7,8 +7,8 @@
 
 ## Vision
 
-Studio is PulseBoard's schema builder — a multi-tenant Directus-like data platform where:
-- **Super admin (BIPO)** creates **system collections** (employees, leaves, claims) and licenses them to tenants via modules
+Studio is PulseBox's schema builder — a multi-tenant Directus-like data platform where:
+- **Super admin (Next Novas)** creates **system collections** (employees, leaves, claims) and licenses them to tenants via modules
 - **Tenant admin** uses licensed system collections AND creates their own **tenant collections** scoped to their org
 - All data is tenant-isolated via RLS. Collections are exposed via slug-based REST APIs.
 
@@ -24,7 +24,7 @@ Studio is PulseBoard's schema builder — a multi-tenant Directus-like data plat
 | Audit trail | Required, segregated by tenant | Easy to extract for auditors |
 | Slug uniqueness | Globally unique, auto-suffix with running number (max 5 digits) | e.g., `blood-mary-12345` — prevents conflicts across tenants |
 | Licensing | Per-module (e.g., "Leave", "Claim", "Attendance") | General/flexible since no clients yet |
-| Content catalogs | BIPO-maintained (Gender, Country, Marital Status, etc.) | Reusable across any collection's select fields |
+| Content catalogs | Next Novas-maintained (Gender, Country, Marital Status, etc.) | Reusable across any collection's select fields |
 | Auto-generated UI | Grid view (default), Kanban, CSV/Excel export, pagination 20, filter/sort, upload | |
 | API format | `/api/collections/:slug/items` | Slug-based, not UUID. Token resolves tenant via `X-Tenant-Id` header |
 
@@ -42,7 +42,7 @@ CREATE TABLE collections (
   description TEXT,
   icon        TEXT,                           -- lucide icon name
   type        TEXT NOT NULL CHECK (type IN ('system', 'tenant')),
-  tenant_id   UUID REFERENCES tenants(id),   -- NULL = system collection (BIPO)
+  tenant_id   UUID REFERENCES tenants(id),   -- NULL = system collection (Next Novas)
   module_id   UUID REFERENCES modules(id),   -- only for system collections
   is_hidden   BOOLEAN DEFAULT false,         -- for junction collections
   created_by  UUID REFERENCES auth.users(id),
@@ -121,7 +121,7 @@ CREATE INDEX idx_audit_item ON collection_items_audit(item_id);
 -- Trigger: auto-log on INSERT/UPDATE/DELETE of collection_items
 ```
 
-### 5. `content_catalogs` + `content_catalog_items` — BIPO-maintained lookup lists
+### 5. `content_catalogs` + `content_catalog_items` — Next Novas-maintained lookup lists
 
 ```sql
 CREATE TABLE content_catalogs (

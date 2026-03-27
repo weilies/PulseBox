@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Building2, FlaskConical, Database,
   BookOpen, Layers, ChevronDown, Shield, FileKey, Folder, FolderOpen,
-  Boxes, Box, Map, Lock, KeyRound, Workflow, Plug2,
+  Boxes, Box, Map, Lock, KeyRound, Workflow, Plug2, Webhook, ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NavFolder, NavItem } from "@/lib/services/nav.service";
@@ -26,9 +26,11 @@ const PAGE_CONFIG: Record<string, { href: string; label: string; Icon: React.Com
   "roles": { href: "/dashboard/roles", label: "Roles", Icon: Shield },
   "policies": { href: "/dashboard/policies", label: "Policies", Icon: FileKey },
   "apps": { href: "/dashboard/apps", label: "Applications", Icon: KeyRound },
+  "webhooks": { href: "/dashboard/webhooks", label: "Webhooks", Icon: Webhook },
+  "studio.logs": { href: "/dashboard/studio/logs", label: "Activity Log", Icon: ScrollText },
 };
 
-const STUDIO_PAGES = ["studio.system-collections", "studio.content-catalog", "studio.tenant-collections", "studio.queries"];
+const STUDIO_PAGES = ["studio.system-collections", "studio.content-catalog", "studio.tenant-collections", "studio.queries", "studio.logs"];
 
 // Studio pages sorted alphabetically by label
 const STUDIO_PAGES_SORTED = [...STUDIO_PAGES].sort((a, b) =>
@@ -248,8 +250,8 @@ export function Sidebar({ accessiblePages, rootFolders, rootItems, collectionMap
   const [studioOpen, setStudioOpen] = useState(studioActive);
 
   // Integration folder: Applications (apps)
-  const hasIntegrationAccess = pageSet.has("apps");
-  const integrationActive = pathname.startsWith("/dashboard/apps");
+  const hasIntegrationAccess = pageSet.has("apps") || pageSet.has("webhooks");
+  const integrationActive = pathname.startsWith("/dashboard/apps") || pathname.startsWith("/dashboard/webhooks");
   const [integrationOpen, setIntegrationOpen] = useState(integrationActive);
 
   // Separate root nav items into page items and collection items
@@ -428,6 +430,7 @@ export function Sidebar({ accessiblePages, rootFolders, rootItems, collectionMap
             {integrationOpen && (
               <div className="ml-4 mt-0.5 space-y-0.5 border-l border-gray-100 dark:border-gray-700 pl-2">
                 <SubNavLink href="/dashboard/apps" icon={KeyRound} label="Applications" pathname={pathname} onNavigate={onNavigate} />
+                <SubNavLink href="/dashboard/webhooks" icon={Webhook} label="Webhooks" pathname={pathname} onNavigate={onNavigate} />
               </div>
             )}
           </div>

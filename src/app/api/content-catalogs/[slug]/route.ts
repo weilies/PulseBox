@@ -31,5 +31,5 @@ export async function GET(request: NextRequest, { params }: Params) {
     .filter((i) => i.is_active !== false)
     .sort((a, b) => (a.sort_order as number) - (b.sort_order as number));
 
-  return Response.json({ data: { ...catalog, content_catalog_items: items } });
+  return Response.json({ data: { ...catalog, content_catalog_items: items } }, { headers: auth.ctx.rlHeaders });
 }

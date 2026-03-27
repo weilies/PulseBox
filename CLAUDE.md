@@ -1,13 +1,14 @@
-# CLAUDE.md — PulseBoard
+# CLAUDE.md — PulseBox
 
-> **Active tasks live in [TASKS.md](TASKS.md). Check before starting work.**
+> **Active tasks live in [docs/TASKS.md](docs/TASKS.md). Check before starting work.**
 > **Implementation plans live in [docs/](docs/).**
 ---
 
 ## Project Overview
 
-PulseBoard is a modern, multi-tenant HR platform built by BIPO Service (Singapore).
-It replaces legacy HR tooling with a vibe-code-friendly architecture — the PM team gives direction, AI handles implementation.
+PulseBox is a modern, multi-tenant **headless CMS** platform built by Next Novas.
+It provides a flexible schema builder, REST API, and content management foundation that can scale into any vertical — HRMS, Finance, Manufacturing, or any ERP domain.
+The PM team gives direction, AI handles implementation.
 
 ## Tech Stack
 
@@ -22,15 +23,15 @@ It replaces legacy HR tooling with a vibe-code-friendly architecture — the PM 
 
 ### Multi-Tenancy Model
 
-- **tenants** table with `is_super` flag — BIPO Service is the super-tenant (slug: `bipo`)
+- **tenants** table with `is_super` flag — Next Novas is the super-tenant (slug: `nextnovas`)
 - **tenant_users** join table maps users → tenants with roles
-- Users can belong to multiple tenants (BIPO staff may access client tenants for support)
+- Users can belong to multiple tenants (Next Novas staff may access client tenants for support)
 - All data queries are scoped via Supabase Row-Level Security (RLS) based on `auth.uid()` lookups against `tenant_users`
 - Current tenant stored in `pb-tenant` cookie (httpOnly, set by middleware)
 
 ### Roles (hierarchical)
 
-1. `super_admin` — BIPO platform team. Full access to all tenants and platform settings
+1. `super_admin` — Next Novas platform team. Full access to all tenants and platform settings
 2. `tenant_admin` — Client org admin. Manages users/settings within their tenant
 
 > `manager` and `employee` roles were dropped from the design.
@@ -38,7 +39,7 @@ It replaces legacy HR tooling with a vibe-code-friendly architecture — the PM 
 ### Key Directories
 
 ```
-pulseboard/
+pulsebox/
 ├── middleware.ts                    # Auth guard, tenant resolution, role-based route protection
 ├── supabase/migrations/            # SQL migrations (run via `supabase db push`)
 ├── docs/                           # Implementation plans & reference docs
@@ -105,20 +106,20 @@ File: `.env.local` (never commit this)
 NEXT_PUBLIC_SUPABASE_URL      # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY # Supabase anon/public key
 SUPABASE_SERVICE_ROLE_KEY     # Server-only service role key
-NEXT_PUBLIC_APP_NAME          # "PulseBoard"
-NEXT_PUBLIC_SUPER_TENANT_SLUG # "bipo"
+NEXT_PUBLIC_APP_NAME          # "PulseBox"
+NEXT_PUBLIC_SUPER_TENANT_SLUG # "nextnovas"
 ```
 
-## Super-Tenant (BIPO) Behavior
+## Super-Tenant (Next Novas) Behavior
 
-BIPO Service (`is_super: true`) has special privileges:
+Next Novas (`is_super: true`) has special privileges:
 - Can view and manage all tenants via `/dashboard/admin/tenants`
 - `super_admin` users can access any tenant's data
-- Platform-level settings and configurations are BIPO-only
+- Platform-level settings and configurations are Next Novas-only
 
 ## Machine Constraints
 
-- **DO NOT install Docker** — corporate laptop (BIPO Service), not licensed
+- **DO NOT install Docker** — corporate laptop (Next Novas), not licensed
 - **DO NOT run `npx supabase start`** — requires Docker
 - All Supabase work must target cloud instances via `npx supabase db push --linked`
 
@@ -151,7 +152,7 @@ npx supabase gen types typescript --linked > src/types/database.ts
 - No `"use client"` unless the component genuinely needs browser APIs / state
 
 ### UI / Dark Theme (STRICTLY enforced — no exceptions)
-PulseBoard is a **fully dark** app. Every page and grid MUST use these tokens. Never use plain `<Card>` without explicit dark classes. Never use `text-zinc-500`, `bg-white`, `bg-card`, `bg-background`, or any light default shadcn styles in page content.
+PulseBox is a **fully dark** app. Every page and grid MUST use these tokens. Never use plain `<Card>` without explicit dark classes. Never use `text-zinc-500`, `bg-white`, `bg-card`, `bg-background`, or any light default shadcn styles in page content.
 
 > Full theme reference (colors, animations, CSS classes, fonts): [docs/THEME.md](docs/THEME.md)
 

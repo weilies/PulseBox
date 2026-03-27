@@ -14,6 +14,8 @@ export type ApiContext = {
   authMode: "user" | "app";
   /** Admin client — RLS bypassed. Enforce tenant isolation in application code. */
   db: ReturnType<typeof createAdminClient>;
+  /** Rate-limit headers to forward on every success response */
+  rlHeaders: Record<string, string>;
 };
 
 /**
@@ -62,6 +64,7 @@ export async function resolveApiContext(request: NextRequest): Promise<
         appId: appPayload.app_id,
         authMode: "app",
         db,
+        rlHeaders: rateLimitHeaders(rl.remaining, rl.resetAt),
       },
     };
   }
@@ -110,7 +113,7 @@ export async function resolveApiContext(request: NextRequest): Promise<
     return fail(403, "Access denied: you are not a member of this tenant");
   }
 
-  return { ok: true, ctx: { userId: user.id, tenantId, appId: null, authMode: "user", db } };
+  return { ok: true, ctx: { userId: user.id, tenantId, appId: null, authMode: "user", db, rlHeaders: rateLimitHeaders(rl.remaining, rl.resetAt) } };
 }
 
 // ---------------------------------------------------------------------------

@@ -42,6 +42,23 @@ export async function createField(
   const fieldSlug = slugify(name);
   let finalOptions = { ...options };
 
+  // Default relationship_style to "reference" for relation fields if not specified
+  if (fieldType === "relation" && !finalOptions.relationship_style) {
+    finalOptions.relationship_style = "reference";
+  }
+
+  // Validate relationship_style values
+  if (fieldType === "relation" && finalOptions.relationship_style) {
+    const validStyles = ["child_of", "reference", "link"];
+    if (!validStyles.includes(finalOptions.relationship_style as string)) {
+      return { error: `Invalid relationship_style. Must be one of: ${validStyles.join(", ")}` };
+    }
+    // child_of only makes sense with m2o
+    if (finalOptions.relationship_style === "child_of" && finalOptions.relation_type !== "m2o") {
+      return { error: "child_of relationship style is only valid with m2o relation type" };
+    }
+  }
+
   // Handle M2M: auto-create hidden junction collection
   if (fieldType === "relation" && options.relation_type === "m2m") {
     const relatedCollectionId = options.related_collection_id as string;
@@ -141,6 +158,51 @@ export async function deleteField(
   }
 
   const { error } = await supabase.from("collection_fields").delete().eq("id", fieldId);
+  if (error) return { error: error.message };
+  return { data: true };
+}
+
+export async function updateField(
+  supabase: SupabaseClient,
+  fieldId: string,
+  params: {
+    isRequired: boolean;
+    isUnique: boolean;
+    isTranslatable: boolean;
+    options: Record<string, unknown>;
+  }
+) {
+  const { isRequired, isUnique, isTranslatable, options } = params;
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("collection_fields")
+    .select("options, field_type")
+    .eq("id", fieldId)
+    .single();
+
+  if (fetchError) return { error: fetchError.message };
+
+  const currentOptions = (existing?.options as Record<string, unknown>) ?? {};
+  // Preserve labels (managed separately via Edit Labels)
+  // Preserve relation metadata keys that may not be sent in every update
+  const mergedOptions = {
+    ...options,
+    labels: currentOptions.labels,
+    // Keep relationship_style and display_field_slug if not explicitly provided
+    ...(currentOptions.relationship_style && !options.relationship_style
+      ? { relationship_style: currentOptions.relationship_style } : {}),
+    ...(currentOptions.display_field_slug && !options.display_field_slug
+      ? { display_field_slug: currentOptions.display_field_slug } : {}),
+  };
+
+  const canBeTranslatable = ["text", "richtext"].includes(existing?.field_type ?? "");
+  const finalIsTranslatable = canBeTranslatable && isTranslatable;
+
+  const { error } = await supabase
+    .from("collection_fields")
+    .update({ is_required: isRequired, is_unique: isUnique, is_translatable: finalIsTranslatable, options: mergedOptions })
+    .eq("id", fieldId);
+
   if (error) return { error: error.message };
   return { data: true };
 }

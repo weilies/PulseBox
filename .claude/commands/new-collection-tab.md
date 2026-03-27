@@ -1,4 +1,4 @@
-Add a new tab to the PulseBoard collection detail pages.
+Add a new tab to the PulseBox collection detail pages.
 
 ## Arguments
 

@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     grouped[t.language_code][t.field_slug] = t.value;
   }
 
-  return Response.json({ data: grouped });
+  return Response.json({ data: grouped }, { headers: auth.ctx.rlHeaders });
 }
 
 /**
@@ -145,7 +145,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   };
   if (rejected.length > 0) response.warnings = rejected;
 
-  return Response.json(response);
+  return Response.json(response, { headers: auth.ctx.rlHeaders });
 }
 
 /**

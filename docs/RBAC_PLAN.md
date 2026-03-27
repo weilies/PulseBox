@@ -12,8 +12,8 @@ Replace the current hardcoded role system (super_admin, tenant_admin, manager, e
 **User → Role → Policy → Permissions (per resource)**
 
 - Drop `manager` and `employee` roles
-- Two system roles per tenant: `super_admin` (BIPO only) and `tenant_admin`
-- Both BIPO and non-BIPO tenants can create **custom roles**
+- Two system roles per tenant: `super_admin` (Next Novas only) and `tenant_admin`
+- Both Next Novas and non-Next Novas tenants can create **custom roles**
 - All sidebar items (pages + collections) are **policy-driven**
 - Folders are auto-visible when at least one child item is accessible
 - Unified service layer so frontend + API share identical logic
@@ -26,8 +26,8 @@ Replace the current hardcoded role system (super_admin, tenant_admin, manager, e
 | Decision | Choice |
 |----------|--------|
 | Role assignment | One role per user per tenant |
-| System roles | `super_admin` (BIPO only), `tenant_admin` — immutable by non-BIPO |
-| Custom roles | Both BIPO and non-BIPO tenants can create |
+| System roles | `super_admin` (Next Novas only), `tenant_admin` — immutable by non-Next Novas |
+| Custom roles | Both Next Novas and non-Next Novas tenants can create |
 | Policy model | Named policy = bundle of permissions across multiple resources |
 | Permission granularity | Collections: read, create, update, delete, export, import, manage_schema. Pages: access |
 | Page access | All sidebar links are policy-driven; folders auto-show if any child accessible |
@@ -51,7 +51,7 @@ CREATE TABLE roles (
   name        TEXT NOT NULL,
   slug        TEXT NOT NULL,
   description TEXT,
-  is_system   BOOLEAN DEFAULT false,   -- true for super_admin, tenant_admin (cannot be deleted/renamed by non-BIPO)
+  is_system   BOOLEAN DEFAULT false,   -- true for super_admin, tenant_admin (cannot be deleted/renamed by non-Next Novas)
   created_by  UUID REFERENCES auth.users(id),
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now(),
@@ -67,7 +67,7 @@ CREATE TABLE policies (
   tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   description TEXT,
-  is_system   BOOLEAN DEFAULT false,   -- true for default policies (cannot be deleted by non-BIPO)
+  is_system   BOOLEAN DEFAULT false,   -- true for default policies (cannot be deleted by non-Next Novas)
   created_by  UUID REFERENCES auth.users(id),
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now(),
@@ -162,7 +162,7 @@ All policy-controlled pages (used as `resource_id` in `policy_permissions` where
 |-----------|-------------|--------------|-------|
 | `dashboard` | Dashboard | `/dashboard` | Always seeded for all roles |
 | `users` | Users | `/dashboard/users` | User management |
-| `tenants` | Tenants | `/dashboard/tenants` | BIPO super_admin only |
+| `tenants` | Tenants | `/dashboard/tenants` | Next Novas super_admin only |
 | `studio.system-collections` | System Collections | `/dashboard/studio/system-collections` | |
 | `studio.content-catalog` | Content Catalog | `/dashboard/studio/content-catalog` | |
 | `studio.tenant-collections` | Tenant Collections | `/dashboard/studio/tenant-collections` | |
@@ -198,24 +198,24 @@ All policy-controlled pages (used as `resource_id` in `policy_permissions` where
 
 ### Per-Tenant Default Roles
 
-**For BIPO (super tenant):**
+**For Next Novas (super tenant):**
 
 | Role | Slug | is_system | Description |
 |------|------|-----------|-------------|
-| Super Admin | `super_admin` | true | Full platform access. BIPO only. |
+| Super Admin | `super_admin` | true | Full platform access. Next Novas only. |
 | Tenant Admin | `tenant_admin` | true | Full access within tenant. |
 
-**For every non-BIPO tenant:**
+**For every non-Next Novas tenant:**
 
 | Role | Slug | is_system | Description |
 |------|------|-----------|-------------|
 | Tenant Admin | `tenant_admin` | true | Full access within tenant. |
 
-> Note: Non-BIPO tenants do NOT get a `super_admin` role. Only BIPO has it.
+> Note: Non-Next Novas tenants do NOT get a `super_admin` role. Only Next Novas has it.
 
 ### Per-Tenant Default Policies
 
-**Policy: "Full Platform Access"** (BIPO super_admin only)
+**Policy: "Full Platform Access"** (Next Novas super_admin only)
 - All pages: `{ "access": true }`
 - All collections: all 7 permissions = true
 
@@ -224,16 +224,16 @@ All policy-controlled pages (used as `resource_id` in `policy_permissions` where
 - All tenant collections belonging to this tenant: all 7 permissions = true
 - All system collections: `{ "read": true, "export": true }` (rest false)
 
-**Policy: "Content Catalog Management"** (BIPO tenant_admin only — added to BIPO's tenant_admin)
+**Policy: "Content Catalog Management"** (Next Novas tenant_admin only — added to Next Novas's tenant_admin)
 - Page: `studio.content-catalog` → `{ "access": true }`
 
 ### Default Role → Policy Assignments
 
 | Tenant | Role | Policies |
 |--------|------|----------|
-| BIPO | super_admin | Full Platform Access |
-| BIPO | tenant_admin | Tenant Management + Content Catalog Management |
-| Non-BIPO | tenant_admin | Tenant Management |
+| Next Novas | super_admin | Full Platform Access |
+| Next Novas | tenant_admin | Tenant Management + Content Catalog Management |
+| Non-Next Novas | tenant_admin | Tenant Management |
 
 ### User Migration
 
@@ -421,7 +421,7 @@ CREATE POLICY "roles_update" ON roles
   FOR UPDATE USING (
     has_page_access('roles')
     AND (tenant_id = current_tenant_id() OR is_super_admin())
-    AND (NOT is_system OR is_super_admin())  -- only BIPO can edit system roles
+    AND (NOT is_system OR is_super_admin())  -- only Next Novas can edit system roles
   );
 
 CREATE POLICY "roles_delete" ON roles
@@ -736,7 +736,7 @@ The sidebar becomes fully dynamic:
 
 ```
 ┌─────────────────────────────┐
-│  PulseBoard                 │
+│  PulseBox                   │
 ├─────────────────────────────┤
 │  📊 Dashboard               │  ← policy: dashboard.access
 │  👥 Users                   │  ← policy: users.access
@@ -939,8 +939,8 @@ Replace hardcoded role checks with permission-based checks.
 - Update `CLAUDE.md`, `TASKS.md`, `docs/STUDIO_PLAN.md`
 - Ensure `tsc --noEmit` clean
 - Manual test matrix:
-  - Super admin (BIPO): full access
-  - Tenant admin (non-BIPO): tenant-scoped access
+  - Super admin (Next Novas): full access
+  - Tenant admin (non-Next Novas): tenant-scoped access
   - Custom role (limited): only permitted pages/collections
   - Folder visibility: auto-hide empty folders
   - Collection sidebar items: only show if read permission

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return apiErr(error.message, 500);
 
-  return Response.json({ data: data ?? [] });
+  return Response.json({ data: data ?? [] }, { headers: auth.ctx.rlHeaders });
 }
 
 /**
@@ -88,5 +88,5 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return apiErr(error.message, 500);
-  return Response.json({ data }, { status: 201 });
+  return Response.json({ data }, { status: 201, headers: auth.ctx.rlHeaders });
 }

@@ -6,106 +6,175 @@ import { Badge } from "@/components/ui/badge";
 import { FileKey } from "lucide-react";
 import { CreatePolicyDialog } from "@/components/create-policy-dialog";
 import { PolicyActions } from "@/components/policy-actions";
+import Link from "next/link";
+import { PAGE_SIZE, buildGridParams, type GridConfig } from "@/lib/data-grid";
+import { SortableHead } from "@/components/sortable-head";
+import { TablePagination } from "@/components/table-pagination";
+import { TableFilters, type FilterColumn } from "@/components/table-filters";
+import { Suspense } from "react";
 
-export default async function PoliciesPage() {
-  const user = await getUser();
-  if (!user) return null;
+const gridConfig: GridConfig = {
+ sortable: [
+  { field: "name", defaultDir: "asc" },
+ ],
+ filterable: ["name"],
+};
 
-  const supabase = await createClient();
-  const tenantId = await resolveTenant(user.id);
-  if (!tenantId) return null;
+const filterColumns: FilterColumn[] = [
+ { key: "name", type: "text", placeholder: "Filter policy..." },
+ { key: "_roles", type: "none" },
+ { key: "_type", type: "none" },
+ { key: "_actions", type: "none" },
+];
 
-  const { data: policies } = await supabase
-    .from("policies")
-    .select(`
-      id, name, description, is_system, created_at,
-      policy_permissions(resource_type, resource_id, permissions)
-    `)
-    .eq("tenant_id", tenantId)
-    .order("is_system", { ascending: false })
-    .order("name");
+export default async function PoliciesPage({
+ searchParams,
+}: {
+ searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+ const user = await getUser();
+ if (!user) return null;
 
-  const rows = policies ?? [];
+ const sp = await searchParams;
+ const { page, sortCol, ascending, filters } = buildGridParams(sp as Record<string, string | string[] | undefined>, gridConfig);
+ const dirLabel = ascending ? "asc" : "desc" as const;
 
-  return (
-    <div className="p-6 space-y-6 max-w-4xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <FileKey className="h-6 w-6 text-blue-600" />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>
-              Policies
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Each policy defines a named set of permissions across pages and collections.
-            </p>
-          </div>
-        </div>
-        <CreatePolicyDialog />
-      </div>
+ const supabase = await createClient();
+ const tenantId = await resolveTenant(user.id);
+ if (!tenantId) return null;
 
-      {/* Table */}
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
-        <Table>
-          <TableHeader className="bg-gray-100">
-            <TableRow className="border-gray-200 hover:bg-transparent">
-              <TableHead className="text-gray-500">Policy</TableHead>
-              <TableHead className="text-gray-500">Permissions</TableHead>
-              <TableHead className="text-gray-500">Type</TableHead>
-              <TableHead className="w-12" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-gray-500 py-10 bg-white">
-                  No policies yet. Create one to define access rules.
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((policy, i) => {
-                const permCount = policy.policy_permissions?.length ?? 0;
-                return (
-                  <TableRow
-                    key={policy.id}
-                    className={`border-gray-100 hover:bg-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
-                  >
-                    <TableCell>
-                      <div className="font-medium text-gray-900">{policy.name}</div>
-                      {policy.description && (
-                        <div className="text-xs text-gray-500 mt-0.5">{policy.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="border-gray-300 text-gray-500 text-xs">
-                        {permCount} resource{permCount !== 1 ? "s" : ""}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {policy.is_system ? (
-                        <Badge variant="outline" className="border-yellow-500/50 text-yellow-400 text-xs">System</Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-blue-500/50 text-blue-600 text-xs">Custom</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <PolicyActions policyId={policy.id} policyName={policy.name} isSystem={policy.is_system} />
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+ let pq = supabase.from("policies").select(`
+   id, name, description, is_system, created_at,
+   role_policies(
+    role:roles(id, name)
+   )
+  `, { count: "exact" }).eq("tenant_id", tenantId);
 
-      {/* Footnote */}
-      <p className="text-xs text-gray-500">
-        <strong className="text-gray-900">How policies work: </strong>
-        A policy grants permissions to specific pages or collections. Assign policies to roles, then assign roles to users.
-        System policies are managed by BIPO and cannot be deleted.
+ if (filters.name) pq = pq.ilike("name", `%${filters.name}%`);
+
+ const [{ data: tenantInfo }, { data: policies, count }] = await Promise.all([
+  supabase.from("tenants").select("is_super").eq("id", tenantId).single(),
+  pq.order("is_system", { ascending: false }).order(sortCol, { ascending }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
+ ]);
+ const isSuperTenant = !!tenantInfo?.is_super;
+
+ // Filter policies based on visibility rules:
+ // - Super tenant: show all policies
+ // - Other tenants: show custom policies + "Tenant Management" system policy
+ const rows = (policies ?? []).filter((policy) => {
+  if (!policy.is_system) return true; // custom policies always visible in their tenant
+  if (isSuperTenant) return true;     // super tenant sees all system policies
+  // Non-super tenants only see "Tenant Management" — policies table has no slug column, so name match is required
+  return policy.name === "Tenant Management";
+ });
+ const totalItems = count ?? 0;
+ const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+
+ return (
+  <div className="p-6 space-y-6 max-w-4xl">
+   {/* Header */}
+   <div className="flex items-center justify-between">
+    <div className="flex items-center gap-3">
+     <FileKey className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+     <div>
+      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>
+       Policies
+      </h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+       Each policy defines a named set of permissions across pages and collections.
       </p>
+     </div>
     </div>
-  );
+    <CreatePolicyDialog />
+   </div>
+
+   {/* Table */}
+   <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <Table>
+     <TableHeader className="bg-gray-100 dark:bg-gray-800">
+      <TableRow className="border-gray-200 dark:border-gray-700 hover:bg-transparent">
+       <SortableHead label="Policy" field="name" currentSort={sortCol} currentDir={dirLabel} basePath="/dashboard/policies" />
+       <TableHead className="text-gray-500 dark:text-gray-400">Roles</TableHead>
+       <TableHead className="text-gray-500 dark:text-gray-400">Type</TableHead>
+       <TableHead className="w-12" />
+      </TableRow>
+      <Suspense><TableFilters columns={filterColumns} /></Suspense>
+     </TableHeader>
+     <TableBody>
+      {rows.length === 0 ? (
+       <TableRow>
+        <TableCell colSpan={4} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
+         No policies yet. Create one to define access rules.
+        </TableCell>
+       </TableRow>
+      ) : (
+       rows.map((policy, i) => {
+        const linkedRoles = (policy.role_policies ?? [])
+         .map((rp) => {
+          const r = rp.role as unknown as { id: string; name: string } | null;
+          return r;
+         })
+         .filter(Boolean) as { id: string; name: string }[];
+
+        return (
+         <TableRow
+          key={policy.id}
+          className={`border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${i % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800/50"}`}
+         >
+          <TableCell>
+           <div className="font-medium text-gray-900 dark:text-gray-100">{policy.name}</div>
+           {policy.description && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{policy.description}</div>
+           )}
+          </TableCell>
+          <TableCell>
+           {linkedRoles.length === 0 ? (
+            <span className="text-xs text-gray-400 dark:text-gray-500 italic">No roles</span>
+           ) : (
+            <div className="flex flex-wrap gap-1">
+             {linkedRoles.map((r) => (
+              <Link key={r.id} href={`/dashboard/roles/${r.id}`}>
+               <Badge variant="outline" className="border-blue-500/40 text-blue-600 dark:text-blue-400 text-xs hover:bg-blue-500/10 transition-colors cursor-pointer">
+                {r.name}
+               </Badge>
+              </Link>
+             ))}
+            </div>
+           )}
+          </TableCell>
+          <TableCell>
+           {policy.is_system ? (
+            <Badge variant="outline" className="border-yellow-500/50 text-yellow-400 text-xs">System</Badge>
+           ) : (
+            <Badge variant="outline" className="border-blue-500/50 text-blue-600 dark:text-blue-400 text-xs">Custom</Badge>
+           )}
+          </TableCell>
+          <TableCell>
+           <PolicyActions policyId={policy.id} policyName={policy.name} isSystem={policy.is_system} />
+          </TableCell>
+         </TableRow>
+        );
+       })
+      )}
+     </TableBody>
+    </Table>
+   </div>
+
+   <TablePagination
+    currentPage={page}
+    totalPages={totalPages}
+    totalItems={totalItems}
+    basePath="/dashboard/policies"
+    sortCol={sortCol}
+    ascending={ascending}
+   />
+
+   {/* Footnote */}
+   <p className="text-xs text-gray-500 dark:text-gray-400">
+    <strong className="text-gray-900 dark:text-gray-100">How policies work: </strong>
+    A policy grants permissions to specific pages or collections. Assign policies to roles, then assign roles to users.
+    System policies are managed by Next Novas and cannot be deleted.
+   </p>
+  </div>
+ );
 }

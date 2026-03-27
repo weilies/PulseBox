@@ -1,7 +1,7 @@
-# PulseBoard Roadmap
+# PulseBox Roadmap
 
 > Items here are validated product ideas but **not currently scheduled**.
-> Review periodically — promote to TASKS.md when ready to implement.
+> Review periodically — promote to [TASKS.md](TASKS.md) when ready to implement.
 
 ---
 

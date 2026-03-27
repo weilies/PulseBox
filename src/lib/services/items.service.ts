@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { after } from "next/server";
+import { validateItemData } from "@/lib/collection-validation";
+import { runPreSaveWebhooks, firePostSaveWebhooks, fireWebhooks } from "@/lib/webhooks";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,8 +30,56 @@ export type ImportError = {
   message: string;
 };
 
+type CollectionRecord = {
+  id: string;
+  slug: string;
+  type: string;
+};
+
 // ---------------------------------------------------------------------------
-// Item CRUD
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+async function lookupCollection(collectionId: string): Promise<CollectionRecord | null> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("collections")
+    .select("id, slug, type")
+    .eq("id", collectionId)
+    .maybeSingle();
+  return data as CollectionRecord | null;
+}
+
+async function lookupItemWithCollection(itemId: string): Promise<{
+  item: Record<string, unknown>;
+  col: CollectionRecord;
+} | null> {
+  const db = createAdminClient();
+  const { data: item } = await db
+    .from("collection_items")
+    .select("id, collection_id, data, created_at, updated_at")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!item) return null;
+  const col = await lookupCollection(item.collection_id as string);
+  return col ? { item: item as Record<string, unknown>, col } : null;
+}
+
+/** Parse the error body returned by runPreSaveHook into a string. */
+async function extractHookError(response: Response): Promise<string> {
+  try {
+    const json = await response.json();
+    if (typeof json.message === "string") return json.message;
+    if (typeof json.error === "string") return json.error;
+    if (json.errors && typeof json.errors === "object") {
+      return Object.values(json.errors as Record<string, string>).join("; ");
+    }
+  } catch { /* ignore */ }
+  return "Pre-save hook rejected the request";
+}
+
+// ---------------------------------------------------------------------------
+// Item CRUD — identical pipeline to the REST API routes
 // ---------------------------------------------------------------------------
 
 export async function createItem(
@@ -41,27 +93,43 @@ export async function createItem(
 ) {
   const { collectionId, data, userId, tenantId } = params;
 
-  // System collection items have no tenant_id (global)
-  const { data: col } = await supabase
-    .from("collections")
-    .select("type")
-    .eq("id", collectionId)
-    .maybeSingle();
-  const itemTenantId = col?.type === "system" ? null : tenantId;
+  const col = await lookupCollection(collectionId);
+  if (!col) return { error: "Collection not found" };
 
-  // Pre-save hook point (Phase 9+: run tenant scripts here)
+  // 1. Field validation (required, min/max, pattern, unique_constraints, field webhooks)
+  const validation = await validateItemData(collectionId, data, false, undefined, tenantId);
+  if (!validation.valid) {
+    return {
+      error: validation.errors[0]?.message ?? "Validation failed",
+      validationErrors: validation.errors,
+    };
+  }
+  const itemData = validation.normalizedData;
 
-  const { error } = await supabase.from("collection_items").insert({
-    collection_id: collectionId,
-    tenant_id: itemTenantId,
-    data,
-    created_by: userId,
-    updated_by: userId,
-  });
+  // 2. Pre-save webhooks — can block the save
+  const blocked = await runPreSaveWebhooks(tenantId, col.slug, "create", itemData);
+  if (blocked) return { error: await extractHookError(blocked) };
+
+  // 3. Insert
+  const { data: inserted, error } = await supabase
+    .from("collection_items")
+    .insert({
+      collection_id: collectionId,
+      tenant_id: tenantId,
+      data: itemData,
+      created_by: userId,
+      updated_by: userId,
+    })
+    .select("id, data, created_at, updated_at")
+    .single();
 
   if (error) return { error: error.message };
 
-  // Post-save hook point
+  // 4. Non-blocking post-save (outbound webhooks + post_save webhooks)
+  after(() => {
+    fireWebhooks(tenantId, col.slug, "item.created", inserted as Record<string, unknown>);
+    firePostSaveWebhooks(tenantId, col.slug, "create", inserted, inserted.id);
+  });
 
   return { data: true };
 }
@@ -72,34 +140,68 @@ export async function updateItem(
     itemId: string;
     data: Record<string, unknown>;
     userId: string;
+    tenantId: string;
   }
 ) {
-  const { itemId, data, userId } = params;
+  const { itemId, data, userId, tenantId } = params;
 
-  // Pre-save hook point
+  const resolved = await lookupItemWithCollection(itemId);
+  if (!resolved) return { error: "Item not found" };
+  const { col } = resolved;
 
-  const { error } = await supabase
+  // 1. Field validation
+  const validation = await validateItemData(col.id, data, true, itemId, tenantId);
+  if (!validation.valid) {
+    return {
+      error: validation.errors[0]?.message ?? "Validation failed",
+      validationErrors: validation.errors,
+    };
+  }
+  const itemData = validation.normalizedData;
+
+  // 2. Pre-save webhooks
+  const blocked = await runPreSaveWebhooks(tenantId, col.slug, "update", itemData, itemId);
+  if (blocked) return { error: await extractHookError(blocked) };
+
+  // 3. Update
+  const { data: updated, error } = await supabase
     .from("collection_items")
-    .update({ data, updated_by: userId, updated_at: new Date().toISOString() })
-    .eq("id", itemId);
+    .update({ data: itemData, updated_by: userId, updated_at: new Date().toISOString() })
+    .eq("id", itemId)
+    .select("id, data, updated_at")
+    .single();
 
   if (error) return { error: error.message };
 
-  // Post-save hook point
+  // 4. Non-blocking post-save
+  after(() => {
+    fireWebhooks(tenantId, col.slug, "item.updated", updated as Record<string, unknown>);
+    firePostSaveWebhooks(tenantId, col.slug, "update", updated, itemId);
+  });
 
   return { data: true };
 }
 
 export async function deleteItem(
   supabase: SupabaseClient,
-  itemId: string
+  itemId: string,
+  tenantId?: string
 ) {
-  // Pre-delete hook point
+  const resolved = await lookupItemWithCollection(itemId);
+  // Proceed even if lookup fails — still delete, just skip webhooks
+  const col = resolved?.col ?? null;
+  const deletedItem = resolved?.item ?? null;
 
   const { error } = await supabase.from("collection_items").delete().eq("id", itemId);
   if (error) return { error: error.message };
 
-  // Post-delete hook point
+  // Non-blocking post-delete
+  if (col && tenantId && deletedItem) {
+    after(() => {
+      fireWebhooks(tenantId, col.slug, "item.deleted", deletedItem);
+      firePostSaveWebhooks(tenantId, col.slug, "delete", deletedItem, itemId);
+    });
+  }
 
   return { data: true };
 }
@@ -127,14 +229,12 @@ export async function exportItems(
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(({ slug, name, field_type, options }) => ({ slug, name, field_type, options }));
 
-  const isSystem = collection.type === "system";
   let query = supabase
     .from("collection_items")
     .select("id, data, created_at, updated_at")
     .eq("collection_id", collection.id)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: true });
-
-  if (!isSystem) query = query.eq("tenant_id", tenantId);
 
   const { data: items, error } = await query;
   if (error) return { error: error.message };
@@ -149,7 +249,9 @@ export async function exportItems(
 }
 
 // ---------------------------------------------------------------------------
-// Import
+// Import — same pipeline as createItem, applied per row
+// Errors from validation AND onPreSave hook are collected.
+// If any row fails, the entire import is suspended (zero rows inserted).
 // ---------------------------------------------------------------------------
 
 export async function importItems(
@@ -166,7 +268,7 @@ export async function importItems(
 
   const { data: collection } = await supabase
     .from("collections")
-    .select("id, type, collection_fields(slug, name, field_type, options, is_required, is_unique)")
+    .select("id, slug, type, collection_fields(slug, name, field_type, options, is_required, is_unique)")
     .eq("slug", collectionSlug)
     .maybeSingle();
 
@@ -178,20 +280,24 @@ export async function importItems(
   };
   const fields = collection.collection_fields as FieldDef[];
   const fieldMap = new Map(fields.map((f) => [f.slug, f]));
-  const itemTenantId = collection.type === "system" ? null : tenantId;
+  const itemTenantId = tenantId;
 
   const errors: ImportError[] = [];
-  const validItems: { data: Record<string, unknown> }[] = [];
-  const uniqueTracker: Record<string, Set<string>> = {};
+  // Within-batch duplicate tracker (catches duplicates within the file itself)
+  const batchUniqueTracker: Record<string, Set<string>> = {};
   for (const f of fields) {
-    if (f.is_unique) uniqueTracker[f.slug] = new Set();
+    if (f.is_unique) batchUniqueTracker[f.slug] = new Set();
   }
+
+  // Phase 1: type-convert + within-batch unique check, build candidate data per row
+  const candidates: Array<{ rowIndex: number; data: Record<string, unknown> } | null> = [];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const itemData: Record<string, unknown> = {};
     let rowValid = true;
 
+    // Convert values per mapped column
     for (const [csvCol, fieldSlug] of Object.entries(fieldMapping)) {
       if (!fieldSlug) continue;
       const field = fieldMap.get(fieldSlug);
@@ -205,37 +311,74 @@ export async function importItems(
       itemData[fieldSlug] = converted.value;
     }
 
+    // Within-batch duplicate check
     for (const f of fields) {
-      if (f.is_required) {
-        const val = itemData[f.slug];
-        if (val === undefined || val === null || val === "") {
-          errors.push({ row: i + 1, field: f.name, message: "Required field is empty" });
-          rowValid = false;
-        }
-      }
-    }
-
-    for (const f of fields) {
-      if (f.is_unique && itemData[f.slug] !== undefined && itemData[f.slug] !== null && itemData[f.slug] !== "") {
+      if (
+        f.is_unique &&
+        itemData[f.slug] !== undefined &&
+        itemData[f.slug] !== null &&
+        itemData[f.slug] !== ""
+      ) {
         const key = String(itemData[f.slug]);
-        if (uniqueTracker[f.slug].has(key)) {
-          errors.push({ row: i + 1, field: f.name, message: `Duplicate value "${key}" in import` });
+        if (batchUniqueTracker[f.slug].has(key)) {
+          errors.push({ row: i + 1, field: f.name, message: `Duplicate value "${key}" within import file` });
           rowValid = false;
         } else {
-          uniqueTracker[f.slug].add(key);
+          batchUniqueTracker[f.slug].add(key);
         }
       }
     }
 
-    if (rowValid) validItems.push({ data: itemData });
+    candidates.push(rowValid ? { rowIndex: i, data: itemData } : null);
   }
 
+  // Phase 2: validateItemData + onPreSave hook per valid candidate
+  // Run sequentially to avoid overwhelming hook endpoints
+  const validItems: { data: Record<string, unknown> }[] = [];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const { rowIndex, data: itemData } = candidate;
+
+    // Full validation (required, min/max, pattern, unique_constraints vs DB)
+    const validation = await validateItemData(collection.id, itemData, false, undefined, tenantId);
+    if (!validation.valid) {
+      for (const ve of validation.errors) {
+        const fieldDef = fields.find((f) => f.slug === ve.field);
+        errors.push({
+          row: rowIndex + 1,
+          field: fieldDef?.name ?? ve.field,
+          message: ve.message,
+        });
+      }
+      continue;
+    }
+    const normalizedData = validation.normalizedData;
+
+    // Pre-save webhooks — if they reject, flag the row and continue checking others
+    const blocked = await runPreSaveWebhooks(tenantId, collection.slug, "create", normalizedData);
+    if (blocked) {
+      const msg = await extractHookError(blocked);
+      errors.push({ row: rowIndex + 1, field: "onPreSave hook", message: msg });
+      continue;
+    }
+
+    validItems.push({ data: normalizedData });
+  }
+
+  // Phase 3: if any row failed, suspend the entire import
   if (errors.length > 0) {
-    return { error: "Validation failed", validationErrors: errors, totalRows: rows.length, validCount: validItems.length };
+    return {
+      error: "Validation failed",
+      validationErrors: errors,
+      totalRows: rows.length,
+      validCount: validItems.length,
+    };
   }
 
   if (validItems.length === 0) return { error: "No valid rows to import" };
 
+  // Phase 4: batch insert all valid rows
   const insertPayload = validItems.map((item) => ({
     collection_id: collection.id,
     tenant_id: itemTenantId,
@@ -244,8 +387,26 @@ export async function importItems(
     updated_by: userId,
   }));
 
-  const { error: insertError } = await supabase.from("collection_items").insert(insertPayload);
+  const { data: insertedRows, error: insertError } = await supabase
+    .from("collection_items")
+    .insert(insertPayload)
+    .select("id, data, created_at, updated_at");
+
   if (insertError) return { error: insertError.message };
+
+  // Phase 5: fire outbound webhooks + post-save webhooks for each inserted row (non-blocking)
+  if (insertedRows && insertedRows.length > 0) {
+    after(() => {
+      Promise.allSettled(
+        (insertedRows as Record<string, unknown>[]).map((row) =>
+          Promise.allSettled([
+            fireWebhooks(tenantId, collection.slug, "item.created", row),
+            firePostSaveWebhooks(tenantId, collection.slug, "create", row, row.id as string),
+          ])
+        )
+      );
+    });
+  }
 
   return { data: { imported: validItems.length, total: rows.length } };
 }

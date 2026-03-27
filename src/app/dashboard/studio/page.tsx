@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function StudioPage() {
-  redirect("/dashboard/studio/system-collections");
+ redirect("/dashboard/studio/system-collections");
 }

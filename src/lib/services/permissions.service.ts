@@ -24,16 +24,41 @@ export const PAGE_SLUGS = {
   STUDIO_SYSTEM_COLLECTIONS: "studio.system-collections",
   STUDIO_CONTENT_CATALOG: "studio.content-catalog",
   STUDIO_TENANT_COLLECTIONS: "studio.tenant-collections",
+  STUDIO_NAVIGATIONS: "studio.navigations",
+  STUDIO_QUERIES: "studio.queries",
   ROLES: "roles",
+  POLICIES: "policies",
+  APPS: "apps",
 } as const;
 
 export type PageSlug = (typeof PAGE_SLUGS)[keyof typeof PAGE_SLUGS];
+
+/** All page slugs as an array — used by role/policy detail pages. */
+export const ALL_PAGE_SLUGS: string[] = Object.values(PAGE_SLUGS);
+
+/** Human-readable labels for page slugs. */
+export const PAGE_LABELS: Record<string, string> = {
+  "dashboard": "Dashboard",
+  "users": "Users",
+  "tenants": "Tenants",
+  "studio.system-collections": "System Collections",
+  "studio.content-catalog": "Content Catalog",
+  "studio.tenant-collections": "Tenant Collections",
+  "studio.navigations": "Navigations",
+  "studio.queries": "Query Generator",
+  "roles": "Roles",
+  "policies": "Policies",
+  "apps": "Applications",
+};
+
+/** All collection permission keys. */
+export const COLLECTION_PERMS = ["read", "create", "update", "delete", "export", "import", "manage_schema"] as const;
 
 // ---------------------------------------------------------------------------
 // Core helpers
 // ---------------------------------------------------------------------------
 
-/** True if current user is super_admin (BIPO platform admin). */
+/** True if current user is super_admin (Next Novas platform admin). */
 export async function isSuperAdminUser(supabase: SupabaseClient): Promise<boolean> {
   const { data } = await supabase.rpc("is_super_admin");
   return !!data;

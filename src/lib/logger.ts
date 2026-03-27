@@ -110,10 +110,10 @@ class Logger {
         if (this.queue.length < 100) {
           this.queue.unshift(...batch);
         }
-        console.error("[PulseBoard Logger] Flush failed:", error.message);
+        console.error("[PulseBox Logger] Flush failed:", error.message);
       }
     } catch (err) {
-      console.error("[PulseBoard Logger] Flush error:", err);
+      console.error("[PulseBox Logger] Flush error:", err);
     }
   }
 

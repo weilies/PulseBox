@@ -16,5 +16,5 @@ export async function GET(request: NextRequest) {
     .order("name", { ascending: true });
 
   if (error) return apiErr(error.message, 500);
-  return Response.json({ data: data ?? [] });
+  return Response.json({ data: data ?? [] }, { headers: auth.ctx.rlHeaders });
 }
