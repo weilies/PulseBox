@@ -13,7 +13,7 @@ export async function PATCH(
 ) {
   const auth = await resolveApiContext(request);
   if (!auth.ok) return auth.response;
-  const { db, tenantId, userId } = auth.ctx;
+  const { db, tenantId, userId, authMode } = auth.ctx;
 
   const { id } = await params;
 
@@ -36,8 +36,9 @@ export async function PATCH(
   if (fetchErr) return apiErr(fetchErr.message, 500);
   if (!existing) return apiErr("Task not found", 404);
 
-  // Only the target user (or broadcasts) can be updated by this user
-  if (existing.user_id !== null && existing.user_id !== userId)
+  // User-auth callers can only update their own tasks or broadcast tasks.
+  // App-credential callers (e.g. rule engine) can update any task in their tenant.
+  if (authMode === "user" && existing.user_id !== null && existing.user_id !== userId)
     return apiErr("Forbidden", 403);
 
   const updates: Record<string, unknown> = { status };
