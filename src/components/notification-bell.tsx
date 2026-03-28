@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -18,6 +19,16 @@ interface Task {
 
 interface NotificationBellProps {
   tenantId: string;
+}
+
+function relativeTime(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 export function NotificationBell({ tenantId }: NotificationBellProps) {
@@ -78,24 +89,20 @@ export function NotificationBell({ tenantId }: NotificationBellProps) {
     setMarking(true);
     const headers = await getHeaders();
     if (headers) {
-      await fetch("/api/tasks/mark-all-read", { method: "POST", headers });
-      await fetchTasks();
+      const res = await fetch("/api/tasks/mark-all-read", { method: "POST", headers });
+      if (!res.ok) {
+        toast.error("Failed to mark notifications as read");
+      } else {
+        await fetchTasks();
+      }
     }
     setMarking(false);
   }
 
-  function relativeTime(dateStr: string): string {
-    const diffMs = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diffMs / 60_000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  }
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {/* PopoverTrigger renders its own <button> via @base-ui/react — asChild is not supported.
+          className and aria-label are applied directly to that button element. */}
       <PopoverTrigger
         className="relative inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
@@ -139,10 +146,11 @@ export function NotificationBell({ tenantId }: NotificationBellProps) {
             </p>
           ) : (
             tasks.map((task) => (
-              <div
+              <button
                 key={task.id}
+                type="button"
                 onClick={() => handleTaskClick(task)}
-                className={`px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                className={`w-full text-left px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
                   task.status === "unread" ? "bg-blue-50/50 dark:bg-blue-950/20" : ""
                 }`}
               >
@@ -174,7 +182,7 @@ export function NotificationBell({ tenantId }: NotificationBellProps) {
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
