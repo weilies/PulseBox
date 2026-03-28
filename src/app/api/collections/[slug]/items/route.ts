@@ -263,7 +263,26 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 /**
  * POST /api/collections/:slug/items
+ *
+ * Creates a new item in the collection.
+ *
  * Body: { data: { ... }, translations?: { "zh-CN": { "name": "..." }, ... } }
+ *
+ * Validation (runs automatically):
+ *   - Required fields must have values
+ *   - Number min/max/decimals, text max_length/pattern, file extension checks
+ *   - Single-field and composite unique constraints
+ *   - **Relation existence**: any relation field value must reference an existing
+ *     item in the related collection. This prevents orphan child records —
+ *     e.g. creating an Employment without a valid employee_id will be rejected.
+ *
+ * Example — create a child item (Employment under Employee):
+ *   POST /api/collections/employments/items
+ *   { "data": { "employee_id": "<valid-employee-item-uuid>", "effective_date": "2026-01-15", "location": "Singapore" } }
+ *
+ *   Success → 201 { "data": { "id": "...", "data": { ... }, "created_at": "..." } }
+ *   Parent missing → 422 { "errors": [{ "field": "employee_id", "message": "Employee references a parent record that does not exist" }] }
+ *   Required missing → 422 { "errors": [{ "field": "employee_id", "message": "Employee is required" }] }
  */
 export async function POST(request: NextRequest, { params }: Params) {
   const auth = await resolveApiContext(request);
@@ -282,8 +301,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   const collection = await resolveCollection(db, slug, tenantId);
   if (!collection) return apiErr("Collection not found", 404);
 
-  // Server-side field validation (also normalizes datetime values to UTC ISO)
-  const validation = await validateItemData(collection.id, body.data as Record<string, unknown>, false, undefined, tenantId);
+  // Server-side field validation + rule engine (also normalizes datetime values to UTC ISO)
+  // Detect parent ID: look for any child_of relation field value in the submitted data
+  const bodyData = body.data as Record<string, unknown>;
+  const validation = await validateItemData(collection.id, bodyData, false, undefined, tenantId, slug);
   if (!validation.valid) {
     return Response.json({ errors: validation.errors }, { status: 422 });
   }

@@ -103,6 +103,15 @@ async function fetchAllCollections(
 
       if (!colMeta) return { alias: col.alias, rows: [] };
 
+      // Tenant collections must belong to the current tenant.
+      // This guards against a saved query referencing a collection from another tenant
+      // (e.g. super_admin switches tenants but the query definition still has a foreign collection ID).
+      if (colMeta.type === "tenant" && colMeta.tenant_id !== tenantId) {
+        throw new Error(
+          `Collection "${col.slug}" belongs to a different tenant and cannot be queried in this context`
+        );
+      }
+
       // Fetch items with tenant scoping
       let query = db
         .from("collection_items")

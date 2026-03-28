@@ -142,7 +142,13 @@ export default async function FormBuilderPage({
           href={`/dashboard/studio/collections/${slug}/form`}
           className="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border-b-2 border-blue-400 font-medium"
         >
-          Form
+          Layout
+        </Link>
+        <Link
+          href={`/dashboard/studio/collections/${slug}/rules`}
+          className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+        >
+          Rules
         </Link>
       </div>
 
@@ -153,6 +159,6 @@ export default async function FormBuilderPage({
         initialLayout={formLayout}
         canEdit={canEdit}
       />
-    </div>
+  </div>
   );
 }

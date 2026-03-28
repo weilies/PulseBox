@@ -112,15 +112,6 @@ export function FieldActions({
  <Button
  variant="ghost"
  size="sm"
- className={`h-7 w-7 p-0 transition-colors ${gridVisible ? "text-blue-500 hover:text-blue-400" : "text-zinc-500 hover:text-zinc-300"}`}
- onClick={handleToggleGrid}
- title={gridVisible ? "Hide from grid" : "Show in grid"}
- >
- <LayoutGrid className="h-3.5 w-3.5" />
- </Button>
- <Button
- variant="ghost"
- size="sm"
  className="h-7 w-7 p-0 text-zinc-600 hover:text-zinc-300 disabled:opacity-20"
  disabled={isFirst}
  onClick={() => handleMove("up")}
@@ -155,6 +146,14 @@ export function FieldActions({
  align="end"
  className="bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
  >
+ <DropdownMenuItem
+ className="gap-2 cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 dark:text-blue-400"
+ onClick={handleToggleGrid}
+ >
+ <LayoutGrid className={`h-3.5 w-3.5 ${gridVisible ? "text-blue-500" : ""}`} />
+ {gridVisible ? "Hide from grid" : "Show in grid"}
+ </DropdownMenuItem>
+ <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
  <DropdownMenuItem
  className="gap-2 cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 dark:text-blue-400"
  onClick={() => setEditOpen(true)}

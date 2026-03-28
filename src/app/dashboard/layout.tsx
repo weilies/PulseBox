@@ -31,8 +31,8 @@ export default async function DashboardLayout({
  ])
  : Promise.resolve([{ data: [] }, { data: [] }]),
  tenantId
- ? supabase.from("collections").select("id, name, slug, type").eq("is_hidden", false).or(`type.eq.system,tenant_id.eq.${tenantId}`)
- : supabase.from("collections").select("id, name, slug, type").eq("is_hidden", false).eq("type", "system"),
+ ? supabase.from("collections").select("id, name, slug, type, icon").eq("is_hidden", false).or(`type.eq.system,tenant_id.eq.${tenantId}`)
+ : supabase.from("collections").select("id, name, slug, type, icon").eq("is_hidden", false).eq("type", "system"),
  ]);
 
  const accessiblePages = (pagesResult.data as string[]) ?? [];
@@ -50,7 +50,7 @@ export default async function DashboardLayout({
 
  // Build collection lookup map
  const collectionMap = new Map(
- (collectionsResult.data ?? []).map((c) => [c.id, { id: c.id, name: c.name, slug: c.slug, type: c.type }])
+ (collectionsResult.data ?? []).map((c) => [c.id, { id: c.id, name: c.name, slug: c.slug, type: c.type, icon: c.icon ?? null }])
  );
 
  const { rootFolders, rootItems } = buildNavTree(navFolders, navItems);

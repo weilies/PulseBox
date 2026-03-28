@@ -96,8 +96,8 @@ export async function createItem(
   const col = await lookupCollection(collectionId);
   if (!col) return { error: "Collection not found" };
 
-  // 1. Field validation (required, min/max, pattern, unique_constraints, field webhooks)
-  const validation = await validateItemData(collectionId, data, false, undefined, tenantId);
+  // 1. Field validation + rule engine
+  const validation = await validateItemData(collectionId, data, false, undefined, tenantId, col.slug);
   if (!validation.valid) {
     return {
       error: validation.errors[0]?.message ?? "Validation failed",
@@ -149,8 +149,8 @@ export async function updateItem(
   if (!resolved) return { error: "Item not found" };
   const { col } = resolved;
 
-  // 1. Field validation
-  const validation = await validateItemData(col.id, data, true, itemId, tenantId);
+  // 1. Field validation + rule engine
+  const validation = await validateItemData(col.id, data, true, itemId, tenantId, col.slug);
   if (!validation.valid) {
     return {
       error: validation.errors[0]?.message ?? "Validation failed",
@@ -340,8 +340,8 @@ export async function importItems(
     if (!candidate) continue;
     const { rowIndex, data: itemData } = candidate;
 
-    // Full validation (required, min/max, pattern, unique_constraints vs DB)
-    const validation = await validateItemData(collection.id, itemData, false, undefined, tenantId);
+    // Full validation + rule engine
+    const validation = await validateItemData(collection.id, itemData, false, undefined, tenantId, collectionSlug);
     if (!validation.valid) {
       for (const ve of validation.errors) {
         const fieldDef = fields.find((f) => f.slug === ve.field);

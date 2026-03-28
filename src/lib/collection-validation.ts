@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { evaluateRules } from "@/lib/rules-engine";
 
 export interface FieldError {
   field: string;
@@ -55,13 +56,18 @@ function normalizeDatetimeValue(val: unknown): unknown {
  *   "webhook_url": "https://...",
  *   "webhook_timeout_ms": 3000
  * }
+ *
+ * @param collectionSlug - Required for rule engine evaluation
+ * @param parentId - Optional parent item ID for child collection rules with require_parent=true
  */
 export async function validateItemData(
   collectionId: string,
   data: Record<string, unknown>,
   isUpdate = false,
   itemId?: string,
-  tenantId?: string
+  tenantId?: string,
+  collectionSlug?: string,
+  parentId?: string
 ): Promise<ValidationResult> {
   const db = createAdminClient();
   const errors: FieldError[] = [];
@@ -210,6 +216,33 @@ export async function validateItemData(
     }
   }
 
+  // Relation field existence validation
+  // For any relation field with a value, verify the referenced item exists
+  // in the related collection. Prevents orphan child records and dangling references.
+  const relationFields = fields.filter((f) => f.field_type === "relation");
+  for (const field of relationFields) {
+    const value = normalizedData[field.slug];
+    if (value === undefined || value === null || value === "") continue;
+
+    const opts = (field.options ?? {}) as Record<string, unknown>;
+    const relatedCollectionId = opts.related_collection_id as string | undefined;
+    if (!relatedCollectionId) continue;
+
+    const { count } = await db
+      .from("collection_items")
+      .select("id", { count: "exact", head: true })
+      .eq("id", String(value))
+      .eq("collection_id", relatedCollectionId);
+
+    if (!count || count === 0) {
+      const style = opts.relationship_style as string | undefined;
+      const label = style === "child_of"
+        ? `${field.name} references a parent record that does not exist`
+        : `${field.name} references a record that does not exist`;
+      errors.push({ field: field.slug, message: label });
+    }
+  }
+
   // Composite unique constraint validation
   // Reads unique_constraints from collection metadata and checks for duplicates
   if (tenantId) {
@@ -256,6 +289,19 @@ export async function validateItemData(
         });
       }
     }
+  }
+
+  // Rule Engine v1: derivations + validations from collection_rules table
+  // Runs after field-level checks so derived values can be validated.
+  if (collectionSlug && tenantId) {
+    const { errors: ruleErrors, derivedData } = await evaluateRules(
+      collectionSlug,
+      normalizedData,
+      tenantId,
+      parentId
+    );
+    errors.push(...ruleErrors);
+    Object.assign(normalizedData, derivedData);
   }
 
   return { valid: errors.length === 0, errors, normalizedData };

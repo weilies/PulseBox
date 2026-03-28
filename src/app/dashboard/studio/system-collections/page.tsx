@@ -145,18 +145,6 @@ export default async function SystemCollectionsPage({
  </TableCell>
  <TableCell>
  <div className="flex items-center gap-1">
- <Link
- href={`/dashboard/studio/collections/${c.slug}/schema`}
- className="inline-flex items-center h-7 px-2 text-xs text-blue-600 dark:text-blue-400 hover:text-[#a8c4ff] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
- >
- Schema
- </Link>
- <Link
- href={`/dashboard/studio/collections/${c.slug}/items`}
- className="inline-flex items-center h-7 px-2 text-xs text-gray-500 dark:text-gray-400 hover:text-[#a8c4ff] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
- >
- Items
- </Link>
  {isSuperAdmin && (
  <CollectionActions
  collectionId={c.id}

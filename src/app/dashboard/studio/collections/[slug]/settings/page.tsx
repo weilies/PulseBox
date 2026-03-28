@@ -132,9 +132,16 @@ export default async function SettingsPage({
    href={`/dashboard/studio/collections/${slug}/form`}
    className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
   >
-   Form
+   Layout
   </Link>
-  </div>
+  
+ <Link
+ href={`/dashboard/studio/collections/${slug}/rules`}
+ className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+ >
+ Rules
+ </Link>
+</div>
 
   {/* Collection Settings */}
   {canEdit ? (

@@ -21,7 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, LayoutList, Database, Settings, PanelLeft, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { updateCollection, updateCollectionTranslations, deleteCollection } from "@/app/actions/studio";
 import { LANG_COOKIE, SUPPORTED_LANGUAGES } from "@/lib/constants";
@@ -44,12 +44,13 @@ function getCurrentLocale(): string {
 export function CollectionActions({
  collectionId,
  collectionName,
- collectionSlug: _slug,
+ collectionSlug,
  description,
  icon,
  metadata,
 }: Props) {
  const router = useRouter();
+ const base = `/dashboard/studio/collections/${collectionSlug}`;
  const [editOpen, setEditOpen] = useState(false);
  const [deleteOpen, setDeleteOpen] = useState(false);
  const [name, setName] = useState(collectionName);
@@ -146,6 +147,35 @@ export function CollectionActions({
  className="bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
  >
  <DropdownMenuItem
+ className="gap-2 cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400"
+ onClick={() => router.push(`${base}/schema`)}
+ >
+ <Database className="h-3.5 w-3.5" />
+ Schema
+ </DropdownMenuItem>
+ <DropdownMenuItem
+ className="gap-2 cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400"
+ onClick={() => router.push(`${base}/items`)}
+ >
+ <LayoutList className="h-3.5 w-3.5" />
+ Items
+ </DropdownMenuItem>
+ <DropdownMenuItem
+ className="gap-2 cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400"
+ onClick={() => router.push(`${base}/settings`)}
+ >
+ <Settings className="h-3.5 w-3.5" />
+ Settings
+ </DropdownMenuItem>
+ <DropdownMenuItem
+ className="gap-2 cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400"
+ onClick={() => router.push(`${base}/form`)}
+ >
+ <PanelLeft className="h-3.5 w-3.5" />
+ Layout
+ </DropdownMenuItem>
+ <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+ <DropdownMenuItem
  className="gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 dark:text-blue-400"
  onClick={() => setEditOpen(true)}
  >
@@ -211,6 +241,14 @@ export function CollectionActions({
  onChange={(e) => setIconVal(e.target.value)}
  className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
  />
+ <div className="flex items-start gap-1.5 rounded-md bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+ <HelpCircle className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400 mt-0.5 shrink-0" />
+ <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+ Use the icon name from{" "}
+ <span className="text-blue-600 dark:text-blue-400 font-mono">lucide.dev/icons</span>.
+ {" "}e.g. URL <span className="font-mono text-gray-700 dark:text-gray-300">lucide.dev/icons/air-vent</span> → enter <span className="font-mono text-blue-600 dark:text-blue-400">air-vent</span>.
+ </p>
+ </div>
  </div>
  )}
  </div>

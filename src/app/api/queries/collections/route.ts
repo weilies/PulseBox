@@ -26,12 +26,16 @@ export async function GET() {
     return Response.json({ data: [] });
   }
 
-  // Fetch collection details with fields
+  // Fetch collection details with fields.
+  // Scope to: system collections (shared) OR tenant collections belonging to the current tenant only.
+  // This prevents tenant collections from other tenants leaking through (e.g. when a super_admin
+  // switches tenants, collections created under a different tenant must not appear here).
   const { data: collections } = await supabase
     .from("collections")
     .select("id, slug, name, type, collection_fields(slug, name, field_type)")
     .in("id", ids)
     .eq("is_hidden", false)
+    .or(`type.eq.system,tenant_id.eq.${tenantId}`)
     .order("name");
 
   const result = (collections ?? []).map((c) => ({

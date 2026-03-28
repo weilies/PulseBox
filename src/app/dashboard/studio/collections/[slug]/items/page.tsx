@@ -362,7 +362,13 @@ export default async function ItemsPage({
  href={`/dashboard/studio/collections/${slug}/form`}
  className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
  >
- Form
+ Layout
+ </Link>
+ <Link
+ href={`/dashboard/studio/collections/${slug}/rules`}
+ className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+ >
+ Rules
  </Link>
  </div>
 
@@ -465,7 +471,7 @@ export default async function ItemsPage({
  )}
  </TableBody>
  </Table>
- </div>
+</div>
 
  {/* Pagination */}
  <TablePagination

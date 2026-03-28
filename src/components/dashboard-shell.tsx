@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import type { NavFolder, NavItem } from "@/lib/services/nav.service";
 
-interface CollectionInfo { id: string; name: string; slug: string; type: string; }
+interface CollectionInfo { id: string; name: string; slug: string; type: string; icon: string | null; }
 
 interface DashboardShellProps {
  // Header props

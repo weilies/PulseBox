@@ -7,6 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { CreateFieldDialog } from "@/components/create-field-dialog";
 import { FieldActions } from "@/components/field-actions";
 import { Database, Layers, ArrowLeft, GripVertical } from "lucide-react";
+import * as LucideIcons from "lucide-react";
+
+function resolveCollectionIcon(
+  icon: string | null | undefined,
+  isSystem: boolean
+): React.ComponentType<{ className?: string }> {
+  if (icon) {
+    const name = icon.split("-").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
+    const Comp = (LucideIcons as Record<string, unknown>)[name];
+    if (typeof Comp === "function") return Comp as React.ComponentType<{ className?: string }>;
+  }
+  return isSystem ? Database : Layers;
+}
 import Link from "next/link";
 import { getFieldLabel, getCollectionName, getCollectionDescription } from "@/lib/i18n";
 import { LANG_COOKIE } from "@/lib/constants";
@@ -58,6 +71,7 @@ type Collection = {
  name: string;
  description: string | null;
  type: string;
+ icon: string | null;
  metadata: Record<string, unknown> | null;
  collection_fields: Field[];
 };
@@ -119,11 +133,7 @@ export default async function SchemaPage({
  <div className="flex items-center justify-between flex-wrap gap-3">
  <div className="flex items-center gap-3">
  <div className="rounded-md border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 p-2">
- {isSystem ? (
- <Database className="h-4 w-4 text-blue-600 dark:text-blue-400" />
- ) : (
- <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
- )}
+ {(() => { const CollIcon = resolveCollectionIcon(collection.icon ?? null, isSystem); return <CollIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />; })()}
  </div>
  <div>
  <div className="flex items-center gap-2">
@@ -179,9 +189,16 @@ export default async function SchemaPage({
  href={`/dashboard/studio/collections/${collection.slug}/form`}
  className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
  >
- Form
+ Layout
  </Link>
- </div>
+ 
+ <Link
+ href={`/dashboard/studio/collections/${collection.slug}/rules`}
+ className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+ >
+ Rules
+ </Link>
+</div>
 
  {/* Fields subtitle */}
  <div className="flex items-center justify-between">

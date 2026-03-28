@@ -227,7 +227,23 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 /**
  * PUT /api/collections/:slug/items/:id
+ *
+ * Updates an existing item. Partial updates supported (only send changed fields).
+ *
  * Body: { data: { ... }, translations?: { "zh-CN": { "name": "..." }, ... } }
+ *
+ * Validation (runs automatically):
+ *   - Number/text/file constraints, unique checks
+ *   - **Relation existence**: if a relation field value is changed, the new value
+ *     must reference an existing item. Prevents re-pointing a child to a
+ *     non-existent parent.
+ *
+ * Example — update a child item:
+ *   PUT /api/collections/employments/items/<item-uuid>
+ *   { "data": { "location": "Kuala Lumpur" } }
+ *
+ *   Success → 200 { "data": { "id": "...", "data": { ... }, "updated_at": "..." } }
+ *   Bad parent → 422 { "errors": [{ "field": "employee_id", "message": "Employee references a parent record that does not exist" }] }
  */
 export async function PUT(request: NextRequest, { params }: Params) {
   const auth = await resolveApiContext(request);
@@ -246,13 +262,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const result = await resolveItem(db, slug, id, tenantId);
   if (!result.ok) return apiErr(result.error, result.status);
 
-  // Server-side field validation (isUpdate=true — also normalizes datetime values to UTC ISO)
+  // Server-side field validation + rule engine (isUpdate=true — also normalizes datetime values to UTC ISO)
   const validation = await validateItemData(
     result.collection.id,
     body.data as Record<string, unknown>,
     true,
     id,
-    tenantId
+    tenantId,
+    slug
   );
   if (!validation.valid) {
     return Response.json({ errors: validation.errors }, { status: 422 });

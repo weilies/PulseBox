@@ -6,8 +6,21 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Building2, FlaskConical, Database,
   BookOpen, Layers, ChevronDown, Shield, FileKey, Folder, FolderOpen,
-  Boxes, Box, Map, Lock, KeyRound, Workflow, Plug2, Webhook, ScrollText,
+  Boxes, Box, Map, Lock, KeyRound, Workflow, Plug2, Webhook, ScrollText, Store,
 } from "lucide-react";
+import * as LucideIcons from "lucide-react";
+
+function resolveCollectionIcon(
+  icon: string | null | undefined,
+  type: string
+): React.ComponentType<{ className?: string }> {
+  if (icon) {
+    const name = icon.split("-").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
+    const Comp = (LucideIcons as Record<string, unknown>)[name];
+    if (typeof Comp === "function") return Comp as React.ComponentType<{ className?: string }>;
+  }
+  return type === "system" ? Database : Box;
+}
 import { cn } from "@/lib/utils";
 import type { NavFolder, NavItem } from "@/lib/services/nav.service";
 
@@ -23,6 +36,7 @@ const PAGE_CONFIG: Record<string, { href: string; label: string; Icon: React.Com
   "studio.content-catalog": { href: "/dashboard/studio/content-catalog", label: "Content Catalog", Icon: BookOpen },
   "studio.tenant-collections": { href: "/dashboard/studio/tenant-collections", label: "Tenant Collections", Icon: Layers },
   "studio.queries": { href: "/dashboard/studio/queries", label: "Query Generator", Icon: Workflow },
+  "studio.app-store": { href: "/dashboard/studio/app-store", label: "App Store", Icon: Store },
   "roles": { href: "/dashboard/roles", label: "Roles", Icon: Shield },
   "policies": { href: "/dashboard/policies", label: "Policies", Icon: FileKey },
   "apps": { href: "/dashboard/apps", label: "Applications", Icon: KeyRound },
@@ -30,14 +44,14 @@ const PAGE_CONFIG: Record<string, { href: string; label: string; Icon: React.Com
   "studio.logs": { href: "/dashboard/studio/logs", label: "Activity Log", Icon: ScrollText },
 };
 
-const STUDIO_PAGES = ["studio.system-collections", "studio.content-catalog", "studio.tenant-collections", "studio.queries", "studio.logs"];
+const STUDIO_PAGES = ["studio.system-collections", "studio.content-catalog", "studio.tenant-collections", "studio.queries", "studio.app-store", "studio.logs"];
 
 // Studio pages sorted alphabetically by label
 const STUDIO_PAGES_SORTED = [...STUDIO_PAGES].sort((a, b) =>
   PAGE_CONFIG[a].label.localeCompare(PAGE_CONFIG[b].label)
 );
 
-interface CollectionInfo { id: string; name: string; slug: string; type: string; }
+interface CollectionInfo { id: string; name: string; slug: string; type: string; icon: string | null; }
 
 interface SidebarProps {
   accessiblePages: string[];
@@ -163,7 +177,7 @@ function NavItemNode({
     if (!col) return null;
     const href = `/dashboard/c/${col.slug}`;
     const isActive = pathname.startsWith(href);
-    const Icon = col.type === "system" ? Database : Box;
+    const Icon = resolveCollectionIcon(col.icon, col.type);
     return (
       <Link
         href={href}

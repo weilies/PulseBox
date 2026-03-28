@@ -9,6 +9,8 @@ const NAV_ITEMS = [
  { id: "headers", label: "Required Headers" },
  { id: "i18n", label: "Multi-Language" },
  { id: "examples", label: "Examples" },
+ { id: "parent-child", label: "Parent-Child Items" },
+ { id: "date-formats", label: "Date Formats" },
  { id: "webhooks", label: "Webhooks & Events" },
  { id: "rate-limits",label: "Rate Limits" },
  { id: "errors", label: "Error Codes" },
@@ -483,6 +485,159 @@ curl -X DELETE "https://your-domain.com/api/collections/{collection-slug}/items/
 curl "https://your-domain.com/api/content-catalogs/{catalog-slug}" \\
  -H "Authorization: Bearer $TOKEN" \\
  -H "X-Tenant-Id: $TENANT"`}</Code>
+ </div>
+ </Section>
+
+ {/* Parent-Child Items */}
+ <Section id="parent-child" title="Parent-Child Items">
+ <p className="text-sm text-gray-500 dark:text-gray-400">
+ Collections can have <strong className="text-gray-900 dark:text-gray-100">parent-child relationships</strong> (e.g. Employees → Employments, Employees → Identities).
+ A child collection has a <code className="text-blue-600 dark:text-blue-400 font-mono text-xs">relation</code> field with{" "}
+ <code className="text-blue-600 dark:text-blue-400 font-mono text-xs">relationship_style: &quot;child_of&quot;</code> pointing to the parent collection.
+ </p>
+
+ <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider pt-1">How it works</p>
+ <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-2 text-xs text-gray-500 dark:text-gray-400">
+ <p>The parent reference is stored as a field in the child item&apos;s <code className="text-blue-600 dark:text-blue-400 font-mono">data</code> object.
+ For example, an Employment item stores <code className="text-blue-600 dark:text-blue-400 font-mono">employee_id</code> pointing to the parent Employee&apos;s item ID.</p>
+ <p><strong className="text-gray-900 dark:text-gray-100">Validation:</strong> When creating or updating a child item, the API verifies that the
+ referenced parent item <strong className="text-gray-900 dark:text-gray-100">actually exists</strong> in the related collection.
+ If the parent ID is invalid or the parent was deleted, the request is rejected with <code className="text-red-400 font-mono">422</code>.</p>
+ </div>
+
+ <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider pt-2">List child items of a parent</p>
+ <Code>{`# List all Employments for a specific Employee
+curl "https://YOUR-DOMAIN/api/collections/employments/items?parent_id={employee-item-id}" \\
+ -H "Authorization: Bearer $TOKEN" \\
+ -H "X-Tenant-Id: $TENANT"
+
+# The parent_field is auto-detected from the schema.
+# To specify manually:
+# ?parent_id={id}&parent_field=employee_id`}</Code>
+
+ <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider pt-2">Create a child item</p>
+ <Code>{`# Create an Employment under an existing Employee
+curl -X POST "https://YOUR-DOMAIN/api/collections/employments/items" \\
+ -H "Authorization: Bearer $TOKEN" \\
+ -H "X-Tenant-Id: $TENANT" \\
+ -H "Content-Type: application/json" \\
+ -d '{
+ "data": {
+   "employee_id": "a1b2c3d4-...",
+   "effective_date": "2026-01-15",
+   "location": "Singapore",
+   "position": "Software Engineer"
+ }
+}'
+
+# Success -> 201
+# {
+#   "data": {
+#     "id": "new-uuid",
+#     "data": { "employee_id": "a1b2c3d4-...", ... },
+#     "created_at": "2026-03-28T..."
+#   }
+# }
+
+# If employee_id does not exist -> 422
+# {
+#   "errors": [{
+#     "field": "employee_id",
+#     "message": "Employee references a parent record that does not exist"
+#   }]
+# }`}</Code>
+
+ <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider pt-2">Get parent item with children</p>
+ <Code>{`# Fetch an Employee with all child tabs (Employments, Identities, etc.)
+curl "https://YOUR-DOMAIN/api/collections/employees/items/{item-id}?include_children=true" \\
+ -H "Authorization: Bearer $TOKEN" \\
+ -H "X-Tenant-Id: $TENANT"
+
+# Response includes _children object:
+# {
+#   "data": { "id": "...", "data": { "name": "Alice", ... } },
+#   "_children": {
+#     "employments": { "items": [...], "total": 3 },
+#     "identities":  { "items": [...], "total": 1 }
+#   }
+# }`}</Code>
+
+ <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider pt-2">Delete behavior (cascade rules)</p>
+ <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-2 text-xs">
+ {[
+ ["restrict", "yellow", "Block delete if child records exist (default) — returns 409"],
+ ["cascade", "red", "Delete all child records when parent is deleted"],
+ ["nullify", "purple", "Remove parent reference from children (orphan them intentionally)"],
+ ].map(([rule, color, desc]) => (
+ <div key={rule} className="flex items-start gap-3">
+ <Badge color={color as "yellow" | "red" | "purple"}>{rule}</Badge>
+ <span className="text-gray-500 dark:text-gray-400">{desc}</span>
+ </div>
+ ))}
+ <p className="text-gray-500 dark:text-gray-400 pt-1">
+ Set in collection metadata: <code className="text-blue-600 dark:text-blue-400 font-mono">{`{"cascade_rules": {"on_parent_delete": "restrict"}}`}</code>
+ </p>
+ </div>
+ </Section>
+
+ {/* Date & Time Formats */}
+ <Section id="date-formats" title="Date &amp; Time Formats">
+ <p className="text-sm text-gray-500 dark:text-gray-400">
+ All date and datetime values follow <strong className="text-gray-900 dark:text-gray-100">ISO 8601</strong>.
+ The system stores dates in UTC — always include a timezone offset for datetime fields to avoid ambiguity.
+ </p>
+
+ <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-4 text-xs">
+ <div>
+  <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+   <code className="text-blue-600 dark:text-blue-400 font-mono">date</code> field — date only, no time
+  </p>
+  <div className="space-y-1">
+   {[
+    ["2026-01-15", "2026-01-15", "green", "Recommended — YYYY-MM-DD"],
+    ["2026/01/15", "2026-01-15", "yellow", "Also accepted — parsed by JS Date()"],
+    ["15-01-2026", "—", "red", "Avoid — ambiguous, may fail in some locales"],
+    ["Jan 15 2026", "2026-01-15", "yellow", "Accepted but not recommended"],
+   ].map(([input, stored, color, note]) => (
+    <div key={input} className="grid grid-cols-[auto_auto_1fr] gap-3 items-center">
+     <code className="text-gray-900 dark:text-gray-100 font-mono w-32 shrink-0">{input}</code>
+     <span className="text-gray-400">→</span>
+     <span className="text-gray-500 dark:text-gray-400">{stored} &nbsp;<span className={color === "green" ? "text-emerald-500" : color === "yellow" ? "text-yellow-500" : "text-red-400"}>{note}</span></span>
+    </div>
+   ))}
+  </div>
+ </div>
+
+ <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+  <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+   <code className="text-blue-600 dark:text-blue-400 font-mono">datetime</code> field — always normalized to UTC ISO 8601
+  </p>
+  <div className="space-y-1">
+   {[
+    ["2026-01-15T09:00:00Z", "2026-01-15T09:00:00Z", "green", "UTC explicit — preferred"],
+    ["2026-01-15T09:00:00+08:00", "2026-01-15T01:00:00.000Z", "green", "Offset provided — converted to UTC"],
+    ["2026-01-15T09:00", "2026-01-15T09:00:00.000Z", "yellow", "No timezone — treated as UTC"],
+    ["2026-01-15T09:00:00", "2026-01-15T09:00:00.000Z", "yellow", "No timezone — treated as UTC"],
+    ["2026-01-15", "2026-01-15T00:00:00.000Z", "yellow", "Date only — midnight UTC assumed"],
+   ].map(([input, stored, color, note]) => (
+    <div key={input} className="grid grid-cols-[auto_auto_1fr] gap-3 items-center">
+     <code className="text-gray-900 dark:text-gray-100 font-mono w-48 shrink-0 text-[11px]">{input}</code>
+     <span className="text-gray-400">→</span>
+     <span className="text-gray-500 dark:text-gray-400 text-[11px]">{stored} &nbsp;<span className={color === "green" ? "text-emerald-500" : "text-yellow-500"}>{note}</span></span>
+    </div>
+   ))}
+  </div>
+ </div>
+ </div>
+
+ <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
+  <p><strong>Rule of thumb:</strong></p>
+  <ul className="list-disc list-inside space-y-0.5 text-blue-600 dark:text-blue-400">
+   <li><code className="font-mono">date</code> fields → send <code className="font-mono">YYYY-MM-DD</code></li>
+   <li><code className="font-mono">datetime</code> fields → send <code className="font-mono">YYYY-MM-DDTHH:mm:ssZ</code> with explicit UTC offset</li>
+   <li>If you omit the timezone on a datetime, the system treats it as UTC</li>
+   <li>Never send <code className="font-mono">DD-MM-YYYY</code> or <code className="font-mono">MM/DD/YYYY</code> — ambiguous and unreliable</li>
+  </ul>
  </div>
  </Section>
 

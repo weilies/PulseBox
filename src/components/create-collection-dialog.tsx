@@ -15,14 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
- Select,
- SelectContent,
- SelectItem,
- SelectTrigger,
- SelectValue,
-} from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { Plus, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { createCollection } from "@/app/actions/studio";
 
@@ -145,7 +138,7 @@ export function CreateCollectionDialog({ isSuperAdmin, defaultType }: Props) {
  <div className="space-y-2">
  <Label className="text-gray-900 dark:text-gray-100">
  Icon{" "}
- <span className="text-gray-500 dark:text-gray-400 font-normal">(lucide name, optional)</span>
+ <span className="text-gray-500 dark:text-gray-400 font-normal">(optional)</span>
  </Label>
  <Input
  placeholder="users"
@@ -153,26 +146,15 @@ export function CreateCollectionDialog({ isSuperAdmin, defaultType }: Props) {
  onChange={(e) => setIcon(e.target.value)}
  className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder:text-gray-500/50 dark:placeholder:text-gray-400/50 focus:border-blue-500/60"
  />
+ <div className="flex items-start gap-1.5 rounded-md bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+ <HelpCircle className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400 mt-0.5 shrink-0" />
+ <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+ Use the icon name from{" "}
+ <span className="text-blue-600 dark:text-blue-400 font-mono">lucide.dev/icons</span>.
+ {" "}e.g. URL <span className="font-mono text-gray-700 dark:text-gray-300">lucide.dev/icons/air-vent</span> → enter <span className="font-mono text-blue-600 dark:text-blue-400">air-vent</span>.
+ </p>
  </div>
-
- {/* Type (super_admin only) */}
- {isSuperAdmin && (
- <div className="space-y-2">
- <Label className="text-gray-900 dark:text-gray-100">Type</Label>
- <Select
- value={type}
- onValueChange={(v) => setType(v as "system" | "tenant")}
- >
- <SelectTrigger className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100">
- <SelectValue />
- </SelectTrigger>
- <SelectContent className="bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100">
- <SelectItem value="system">System (platform-wide)</SelectItem>
- <SelectItem value="tenant">Tenant (scoped to current tenant)</SelectItem>
- </SelectContent>
- </Select>
  </div>
- )}
  </div>
 
  <DialogFooter className="mt-6">

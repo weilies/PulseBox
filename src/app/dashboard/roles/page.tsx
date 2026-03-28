@@ -1,4 +1,4 @@
-import { getUser } from "@/lib/auth";
+import { getUser, getUserRole } from "@/lib/auth";
 import { resolveTenant } from "@/lib/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,6 +43,11 @@ export default async function RolesPage({
  const tenantId = await resolveTenant(user.id);
  if (!tenantId) return null;
 
+ const role = await getUserRole(user.id, tenantId);
+ const { data: currentTenant } = await supabase.from("tenants").select("is_super").eq("id", tenantId).maybeSingle();
+ const isSuperAdmin = role === "super_admin" && currentTenant?.is_super === true;
+
+ // Non-super tenants should not see system roles — those are platform-managed
  let rq = supabase
   .from("roles")
   .select(`
@@ -52,6 +57,8 @@ export default async function RolesPage({
    )
   `, { count: "exact" })
   .eq("tenant_id", tenantId);
+
+ if (!isSuperAdmin) rq = rq.eq("is_system", false);
 
  if (filters.name) rq = rq.ilike("name", `%${filters.name}%`);
 
