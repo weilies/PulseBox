@@ -349,7 +349,7 @@ export async function deleteUser(formData: FormData) {
 
   if (actor) {
     await logUserMgmtEvent({
-      tenantId:    formData.get("tenantId") as string ?? "",
+      tenantId:    (formData.get("tenantId") as string | null) ?? "",
       actorId:     actor.id,
       targetType:  "user",
       targetId:    userId,
