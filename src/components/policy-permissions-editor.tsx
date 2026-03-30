@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Save } from "lucide-react";
 import { updatePolicyPermissions } from "@/app/actions/roles";
-import { PAGE_LABELS, COLLECTION_PERMS } from "@/lib/services/permissions.service";
-// Non-super tenants may only grant read/export on system collections
-const SYSTEM_COL_READONLY_PERMS = new Set(["create", "update", "delete", "import", "manage_schema"]);
+import { PAGE_LABELS, PAGE_SECTIONS, COLLECTION_PERMS } from "@/lib/services/permissions.service";
 const PAGE_PERMS = ["access"] as const;
 
 type PermRow = {
@@ -24,6 +22,7 @@ interface PolicyPermissionsEditorProps {
  policyId: string;
  isSystem: boolean;
  isSuperTenant: boolean;
+ canEditSystem?: boolean;
  readOnly?: boolean;
  initialPermissions: Array<{
  resource_type: string;
@@ -37,7 +36,8 @@ interface PolicyPermissionsEditorProps {
 export function PolicyPermissionsEditor({
  policyId,
  isSystem,
- isSuperTenant,
+ isSuperTenant: _isSuperTenant,
+ canEditSystem = false,
  readOnly = false,
  initialPermissions,
  pages,
@@ -45,6 +45,9 @@ export function PolicyPermissionsEditor({
 }: PolicyPermissionsEditorProps) {
  const router = useRouter();
  const [loading, setLoading] = useState(false);
+
+ // Compute isReadOnly: system policies are read-only unless canEditSystem is true
+ const isReadOnly = (isSystem && !canEditSystem) || readOnly;
 
  // Build initial state from props
  const buildInitialRows = (): PermRow[] => {
@@ -117,7 +120,7 @@ export function PolicyPermissionsEditor({
 
  return (
  <div className="space-y-6">
- {/* Pages */}
+ {/* Pages — Organized by Sections */}
  <div>
  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Pages</h3>
  <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -129,20 +132,37 @@ export function PolicyPermissionsEditor({
  </tr>
  </thead>
  <tbody>
- {pageRows.map((row, i) => (
+ {PAGE_SECTIONS.map((section) => {
+ const sectionPages = section.pages.filter((slug) => pages.includes(slug));
+ if (sectionPages.length === 0) return null;
+
+ const sectionPageRows = pageRows.filter((r) => sectionPages.includes(r.resource_id));
+ return (
+ <React.Fragment key={section.section}>
+ {/* Section Header */}
+ <tr className="bg-gray-50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800">
+ <td colSpan={2} className="px-4 py-2 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+ {section.section}
+ </td>
+ </tr>
+ {/* Section Rows */}
+ {sectionPageRows.map((row, i) => (
  <tr key={row.resource_id} className={`border-t border-gray-100 dark:border-gray-800 ${i % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800/50"}`}>
- <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.label}</td>
+ <td className="px-4 py-2 text-gray-900 dark:text-gray-100 pl-8">{row.label}</td>
  <td className="px-4 py-2 text-center">
  <input
  type="checkbox"
  className={checkboxClass}
  checked={!!row.permissions.access}
- onChange={() => toggle(i, "access")}
- disabled={isSystem || readOnly}
+ onChange={() => toggle(pageRows.indexOf(row), "access")}
+ disabled={isReadOnly}
  />
  </td>
  </tr>
  ))}
+ </React.Fragment>
+ );
+ })}
  </tbody>
  </table>
  </div>
@@ -158,7 +178,9 @@ export function PolicyPermissionsEditor({
  <tr>
  <th className="text-left px-4 py-2 text-gray-500 dark:text-gray-400 font-medium">Collection</th>
  {COLLECTION_PERMS.map((p) => (
- <th key={p} className="text-center px-3 py-2 text-gray-500 dark:text-gray-400 font-medium capitalize">{p.replace("_", "")}</th>
+ <th key={p} className="text-center px-3 py-2 text-gray-500 dark:text-gray-400 font-medium capitalize">
+              {p === "manage_schema" ? "Manage Schema" : p.charAt(0).toUpperCase() + p.slice(1)}
+             </th>
  ))}
  </tr>
  </thead>
@@ -170,21 +192,21 @@ export function PolicyPermissionsEditor({
  <tr key={row.resource_id} className={`border-t border-gray-100 dark:border-gray-800 ${i % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800/50"}`}>
  <td className="px-4 py-2 text-gray-900 dark:text-gray-100 max-w-[200px] truncate">{row.label}</td>
  {COLLECTION_PERMS.map((p) => {
- // Non-super tenants cannot grant write permissions on system collections
- const lockedBySystemRule = isSystemCol && !isSuperTenant && SYSTEM_COL_READONLY_PERMS.has(p);
- return (
- <td key={p} className="px-3 py-2 text-center">
- <input
- type="checkbox"
- className={checkboxClass}
- checked={lockedBySystemRule ? false : !!row.permissions[p]}
- onChange={() => toggle(idx, p)}
- disabled={isSystem || lockedBySystemRule || readOnly}
- title={lockedBySystemRule ? "System collections: read & export only" : undefined}
- />
- </td>
- );
- })}
+                 // manage_schema on system collections is always locked — only Next Novas can alter system schema
+                 const isLocked = isSystemCol && p === "manage_schema";
+                 return (
+                 <td key={p} className="px-3 py-2 text-center">
+                 <input
+                 type="checkbox"
+                 className={checkboxClass}
+                 checked={isLocked ? false : !!row.permissions[p]}
+                 onChange={() => toggle(idx, p)}
+                 disabled={isReadOnly || isLocked}
+                 title={isLocked ? "System collection schema is managed by Next Novas only" : undefined}
+                 />
+                 </td>
+                 );
+                 })}
  </tr>
  );
  })}
@@ -194,7 +216,7 @@ export function PolicyPermissionsEditor({
  </div>
  )}
 
- {!isSystem && !readOnly && (
+ {!isReadOnly && (
  <Button
  onClick={handleSave}
  disabled={loading}
@@ -205,7 +227,11 @@ export function PolicyPermissionsEditor({
  </Button>
  )}
 
- {isSystem && !readOnly && (
+ {isSystem && canEditSystem && !readOnly && (
+ <p className="text-xs text-amber-500">Editing system policy — changes affect all users with this policy assigned.</p>
+ )}
+
+ {isSystem && !canEditSystem && !readOnly && (
  <p className="text-xs text-gray-500 dark:text-gray-400 italic">System policies cannot be edited.</p>
  )}
  </div>

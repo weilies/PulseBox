@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getUser } from "@/lib/auth";
 import { resolveTenant } from "@/lib/tenant";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, FileKey } from "lucide-react";
 import { PolicyPermissionsEditor } from "@/components/policy-permissions-editor";
@@ -22,14 +23,21 @@ export default async function PolicyDetailPage({
  const tenantId = await resolveTenant(user.id);
  if (!tenantId) return null;
 
- const [{ data: tenantInfo }, { data: policy }, { data: collections }] = await Promise.all([
+ const adminDb = createAdminClient();
+ const [{ data: tenantInfo }, { data: policy }, { data: collections }, { data: isSuperAdmin }] = await Promise.all([
   supabase.from("tenants").select("is_super").eq("id", tenantId).single(),
-  supabase.from("policies").select("id, name, description, is_system, policy_permissions(resource_type, resource_id, permissions)").eq("id", id).eq("tenant_id", tenantId).single(),
-  supabase.from("collections").select("id, name, type").eq("is_hidden", false).or(`type.eq.system,tenant_id.eq.${tenantId}`).order("name"),
+  supabase.from("policies").select("id, name, description, is_system, tenant_id, policy_permissions(resource_type, resource_id, permissions)").eq("id", id).single(),
+  // Use admin client to bypass RLS — tenant collections are only visible via RLS if you
+  // already have read permission on them, creating a chicken-and-egg problem in the editor.
+  adminDb.from("collections").select("id, name, type").eq("is_hidden", false).or(`type.eq.system,tenant_id.eq.${tenantId}`).order("name"),
+  supabase.rpc("is_super_admin"),
  ]);
 
  const isSuperTenant = !!tenantInfo?.is_super;
+ const canEditSystem = !!isSuperAdmin && isSuperTenant;
  if (!policy) notFound();
+ // Ensure user can access: must be system policy OR belong to current tenant
+ if (!policy.is_system && policy.tenant_id !== tenantId) notFound();
 
  const availablePages = isSuperTenant
   ? ALL_PAGE_SLUGS
@@ -79,6 +87,7 @@ export default async function PolicyDetailPage({
  policyId={policy.id}
  isSystem={policy.is_system}
  isSuperTenant={isSuperTenant}
+ canEditSystem={canEditSystem}
  initialPermissions={(policy.policy_permissions ?? []).map((pp) => ({
  resource_type: pp.resource_type as "page" | "collection",
  resource_id: pp.resource_id,
