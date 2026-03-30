@@ -21,10 +21,11 @@ import {
  SelectTrigger,
  SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { updateUserProfile, deleteUser, assignUserToTenant, removeUserFromTenant, updateUserRole, updateUserStatus } from "@/app/actions/dashboard";
 import { AvatarUpload } from "@/components/avatar-upload";
+import { DestructiveAlert } from "@/components/destructive-alert";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { STATUS_LABELS } from "@/lib/constants";
 
 interface RoleOption {
@@ -94,6 +95,7 @@ export function UserDetailDialog({
    const formData = new FormData();
    formData.set("userId", userId);
    formData.set("fullName", name);
+   formData.set("tenantId", tenantId);
    promises.push(updateUserProfile(formData));
   }
 
@@ -139,6 +141,7 @@ export function UserDetailDialog({
 
   const formData = new FormData();
   formData.set("userId", userId);
+  formData.set("tenantId", tenantId);
 
   const result = await deleteUser(formData);
   setDeleting(false);
@@ -200,13 +203,13 @@ export function UserDetailDialog({
 
  return (
   <Dialog open={open} onOpenChange={onOpenChange}>
-   <DialogContent className="max-w-md">
+   <DialogContent className="max-w-md flex flex-col max-h-[90vh]">
     <DialogHeader>
      <DialogTitle>User Details</DialogTitle>
      <DialogDescription>View and edit user information.</DialogDescription>
     </DialogHeader>
 
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-4 overflow-y-auto pr-2 flex-1">
      {/* Avatar */}
      <div className="flex items-center gap-4">
       <AvatarUpload
@@ -296,95 +299,87 @@ export function UserDetailDialog({
      <div className="border-t pt-4">
       {!confirmRemove ? (
        <Button
-        variant="outline"
+        variant="destructive"
         size="sm"
-        className="w-full text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+        className="w-full"
         onClick={() => setConfirmRemove(true)}
        >
         Remove from Tenant
        </Button>
       ) : (
-       <div className="space-y-2">
-        <p className="text-sm text-orange-600">Remove this user from the tenant? They will lose access but their account remains.</p>
-        <div className="flex gap-2">
-         <Button variant="outline" size="sm" onClick={() => setConfirmRemove(false)}>Cancel</Button>
-         <Button
-          size="sm"
-          className="bg-orange-600 hover:bg-orange-700 text-white"
-          onClick={handleRemove}
-          disabled={removing}
-         >
-          {removing ? "Removing..." : "Confirm Remove"}
-         </Button>
-        </div>
-       </div>
+       <ConfirmActionDialog
+        isOpen={confirmRemove}
+        severity="danger"
+        message="Remove this user from the tenant? They will lose access but their account remains."
+        confirmLabel="Confirm Remove"
+        cancelLabel="Cancel"
+        confirmVariant="destructive"
+        onConfirm={handleRemove}
+        onCancel={() => setConfirmRemove(false)}
+        isLoading={removing}
+       />
       )}
      </div>
 
      {/* Role change confirmation */}
      {confirmRoleChange && (
-      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
-       <div className="flex items-start gap-2">
-        <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-        <p className="text-sm text-amber-700 dark:text-amber-400">
-         Change role from <strong>{originalRoleLabel}</strong> to <strong>{currentRoleLabel}</strong>?
-         This will update what this user can access.
-        </p>
-       </div>
-       <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={() => setConfirmRoleChange(false)}>Back</Button>
+      <DestructiveAlert
+       severity="warning"
+       message={`Change role from ${originalRoleLabel} to ${currentRoleLabel}? This will update what this user can access.`}
+      >
+       <div className="flex gap-2 pt-2">
+        <Button variant="outline" size="sm" onClick={() => setConfirmRoleChange(false)}>
+         Back
+        </Button>
         <Button
          size="sm"
          onClick={doSave}
          disabled={saving}
-         className="bg-amber-600 hover:bg-amber-700 text-white"
+         variant="default"
         >
          {saving ? "Saving..." : "Confirm & Save"}
         </Button>
        </div>
-      </div>
+      </DestructiveAlert>
      )}
     </div>
 
     <DialogFooter className="mt-6">
-     <div className="flex w-full items-center justify-between">
-      <div>
-       {!confirmDelete ? (
-        <Button
-         variant="destructive"
-         size="sm"
-         onClick={() => setConfirmDelete(true)}
-        >
-         Delete User
-        </Button>
-       ) : (
-        <div className="flex items-center gap-2">
-         <span className="text-sm text-destructive">Are you sure?</span>
+     <div className="w-full space-y-4">
+      {confirmDelete && (
+       <ConfirmActionDialog
+        isOpen={confirmDelete}
+        severity="danger"
+        title="Delete User"
+        message="This will permanently delete the user account and all associated data. This cannot be undone."
+        confirmLabel="Confirm Delete"
+        cancelLabel="Cancel"
+        confirmVariant="destructive"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+        isLoading={deleting}
+       />
+      )}
+      <div className="flex items-center justify-between">
+       <div>
+        {!confirmDelete && (
          <Button
           variant="destructive"
           size="sm"
-          onClick={handleDelete}
-          disabled={deleting}
+          onClick={() => setConfirmDelete(true)}
          >
-          {deleting ? "Deleting..." : "Confirm Delete"}
+          Delete User
          </Button>
-         <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setConfirmDelete(false)}
-         >
-          Cancel
-         </Button>
-        </div>
-       )}
-      </div>
-      <div className="flex gap-2">
-       <DialogClose render={<Button type="button" variant="outline" />}>
-        Close
-       </DialogClose>
-       <Button onClick={handleSave} disabled={saving || !hasChanges || confirmRoleChange}>
-        {saving ? "Saving..." : "Save Changes"}
-       </Button>
+        )}
+       </div>
+       <div className="flex gap-2">
+        <DialogClose render={<Button type="button" variant="outline" />}>
+         Close
+        </DialogClose>
+        <Button onClick={handleSave} disabled={saving || !hasChanges || confirmRoleChange || confirmDelete}>
+         {saving ? "Saving..." : "Save Changes"}
+        </Button>
+       </div>
       </div>
      </div>
     </DialogFooter>
