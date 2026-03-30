@@ -116,6 +116,50 @@ function AuditDiff({ old_data, new_data, action }: {
       </div>
     );
   }
+
+  // Generic user management audit events (user.*, role.*, policy.*)
+  // If both old and new data exist, show a field-level diff
+  if (old_data && new_data) {
+    const allKeys = new Set([...Object.keys(old_data), ...Object.keys(new_data)]);
+    const changed: Record<string, { before: unknown; after: unknown }> = {};
+    for (const key of allKeys) {
+      const before = old_data[key];
+      const after = new_data[key];
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        changed[key] = { before, after };
+      }
+    }
+    if (Object.keys(changed).length > 0) {
+      return (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Changed fields</p>
+          <div className="space-y-2">
+            {Object.entries(changed).map(([key, { before, after }]) => (
+              <div key={key} className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-mono">
+                <div className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-semibold border-b border-gray-200 dark:border-gray-700">
+                  {key}
+                </div>
+                <div className="grid grid-cols-2 divide-x divide-gray-200 dark:divide-gray-700">
+                  <div className="px-2 py-1.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 break-all">
+                    <span className="text-red-400 dark:text-red-600 mr-1">−</span>
+                    {before === null || before === undefined ? <span className="italic text-gray-400">null</span> : JSON.stringify(before)}
+                  </div>
+                  <div className="px-2 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 break-all">
+                    <span className="text-emerald-400 dark:text-emerald-600 mr-1">+</span>
+                    {after === null || after === undefined ? <span className="italic text-gray-400">null</span> : JSON.stringify(after)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+  }
+  // Create events — show what was created
+  if (new_data && !old_data) return <JsonBlock label="New values" data={new_data} />;
+  // Delete/remove events — show what was removed
+  if (old_data && !new_data) return <JsonBlock label="Previous values" data={old_data} />;
   return null;
 }
 

@@ -243,6 +243,12 @@ export async function updatePolicyPermissions(formData: FormData) {
     try { permissions = permissionsRaw ? JSON.parse(permissionsRaw) : []; }
     catch { return { error: "Invalid permissions format" }; }
 
+    // Capture current permissions before overwrite for audit diff
+    const { data: oldPerms } = await supabase
+      .from("policy_permissions")
+      .select("resource_type, resource_id, permissions")
+      .eq("policy_id", policyId);
+
     const result = await RolesService.updatePolicyPermissions(supabase, { policyId, permissions });
     if (result.error) return { error: result.error };
 
@@ -253,6 +259,7 @@ export async function updatePolicyPermissions(formData: FormData) {
       targetId:    policyId,
       targetLabel: policy?.name ?? policyId,
       action:      "policy.updated",
+      oldData:     { name: policy?.name, permissions: oldPerms ?? [] },
       newData:     { name: policy?.name, permissions },
     });
 
