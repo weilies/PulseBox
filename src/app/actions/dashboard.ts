@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/auth";
+import { logUserMgmtEvent } from "@/lib/audit";
 import * as TenantsService from "@/lib/services/tenants.service";
 
 // ---------------------------------------------------------------------------
@@ -85,6 +86,8 @@ export async function createUser(formData: FormData) {
     return { error: "All fields are required" };
   }
 
+  const actor = await getUser();
+
   // Phase 3: switch to role_id-based insertion
   const admin = createAdminClient();
 
@@ -98,7 +101,7 @@ export async function createUser(formData: FormData) {
 
   const roleId = await resolveRoleId(admin, tenantId, role);
   const { error: assignError } = await admin.from("tenant_users").insert([
-    { tenant_id: tenantId, user_id: authData.user.id, role, role_id: roleId, is_active: true, is_default: false },
+    { tenant_id: tenantId, user_id: authData.user.id, role, role_id: roleId, is_default: false },
   ]);
   if (assignError) return { error: `User created but tenant assignment failed: ${assignError.message}` };
 
@@ -108,20 +111,54 @@ export async function createUser(formData: FormData) {
     await admin.from("tenant_users").delete().eq("user_id", authData.user.id).eq("tenant_id", superTenant.id);
   }
 
+  if (actor) {
+    await logUserMgmtEvent({
+      tenantId,
+      actorId:     actor.id,
+      targetType:  "user",
+      targetId:    authData.user.id,
+      targetLabel: email,
+      action:      "user.created",
+      newData:     { email, role },
+    });
+  }
+
   return { data: authData };
 }
 
 export async function updateUserProfile(formData: FormData) {
   const userId = formData.get("userId") as string;
   const fullName = formData.get("fullName") as string;
+  const tenantId = formData.get("tenantId") as string;
   if (!userId || !fullName) return { error: "User ID and full name are required" };
 
+  const actor = await getUser();
+
   const supabase = await createClient();
+  const { data: current } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", userId)
+    .single();
+
   const { data, error } = await supabase
     .from("profiles")
     .update({ full_name: fullName })
     .eq("id", userId);
   if (error) return { error: error.message };
+
+  if (actor && tenantId) {
+    await logUserMgmtEvent({
+      tenantId,
+      actorId:    actor.id,
+      targetType: "user",
+      targetId:   userId,
+      action:     "user.profile_updated",
+      oldData:    current ? { full_name: current.full_name } : undefined,
+      newData:    { full_name: fullName },
+    });
+  }
+
   return { data };
 }
 
@@ -147,6 +184,8 @@ export async function assignUserToTenant(formData: FormData) {
   const role = formData.get("role") as string;
   if (!email || !tenantId || !role) return { error: "All fields are required" };
 
+  const actor = await getUser();
+
   const db = createAdminClient();
   const { data: userData, error: userError } = await db
     .from("profiles").select("id").eq("email", email).single();
@@ -158,6 +197,19 @@ export async function assignUserToTenant(formData: FormData) {
     { onConflict: "tenant_id,user_id" }
   );
   if (error) return { error: error.message };
+
+  if (actor) {
+    await logUserMgmtEvent({
+      tenantId,
+      actorId:     actor.id,
+      targetType:  "user",
+      targetId:    userData.id,
+      targetLabel: email,
+      action:      "user.assigned",
+      newData:     { email, role },
+    });
+  }
+
   return { data };
 }
 
@@ -167,7 +219,17 @@ export async function updateUserRole(formData: FormData) {
   const role = formData.get("role") as string;
   if (!userId || !tenantId || !role) return { error: "All fields are required" };
 
+  const actor = await getUser();
+
   const db = createAdminClient();
+
+  const { data: current } = await db
+    .from("tenant_users")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("tenant_id", tenantId)
+    .single();
+
   const roleId = await resolveRoleId(db, tenantId, role);
   const { data, error } = await db
     .from("tenant_users")
@@ -175,6 +237,19 @@ export async function updateUserRole(formData: FormData) {
     .eq("user_id", userId)
     .eq("tenant_id", tenantId);
   if (error) return { error: error.message };
+
+  if (actor) {
+    await logUserMgmtEvent({
+      tenantId,
+      actorId:    actor.id,
+      targetType: "user",
+      targetId:   userId,
+      action:     "user.role_changed",
+      oldData:    current ? { role: current.role } : undefined,
+      newData:    { role },
+    });
+  }
+
   return { data };
 }
 
@@ -185,6 +260,16 @@ export async function updateUserStatus(formData: FormData) {
   if (!userId || !tenantId || !status) return { error: "All fields are required" };
   if (!["active", "inactive", "suspended"].includes(status)) return { error: "Invalid status" };
 
+  const actor = await getUser();
+
+  const db = createAdminClient();
+  const { data: current } = await db
+    .from("tenant_users")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("tenant_id", tenantId)
+    .single();
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tenant_users")
@@ -192,6 +277,19 @@ export async function updateUserStatus(formData: FormData) {
     .eq("user_id", userId)
     .eq("tenant_id", tenantId);
   if (error) return { error: error.message };
+
+  if (actor) {
+    await logUserMgmtEvent({
+      tenantId,
+      actorId:    actor.id,
+      targetType: "user",
+      targetId:   userId,
+      action:     "user.status_changed",
+      oldData:    current ? { status: current.status } : undefined,
+      newData:    { status },
+    });
+  }
+
   return { data };
 }
 
@@ -200,6 +298,16 @@ export async function removeUserFromTenant(formData: FormData) {
   const tenantId = formData.get("tenantId") as string;
   if (!userId || !tenantId) return { error: "User ID and tenant ID are required" };
 
+  const actor = await getUser();
+
+  const db = createAdminClient();
+  const { data: current } = await db
+    .from("tenant_users")
+    .select("role, status")
+    .eq("user_id", userId)
+    .eq("tenant_id", tenantId)
+    .single();
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tenant_users")
@@ -207,6 +315,18 @@ export async function removeUserFromTenant(formData: FormData) {
     .eq("user_id", userId)
     .eq("tenant_id", tenantId);
   if (error) return { error: error.message };
+
+  if (actor) {
+    await logUserMgmtEvent({
+      tenantId,
+      actorId:    actor.id,
+      targetType: "user",
+      targetId:   userId,
+      action:     "user.removed",
+      oldData:    current ? { role: current.role, status: current.status } : undefined,
+    });
+  }
+
   return { data };
 }
 
@@ -214,8 +334,30 @@ export async function deleteUser(formData: FormData) {
   const userId = formData.get("userId") as string;
   if (!userId) return { error: "User ID is required" };
 
+  const actor = await getUser();
+
   const admin = createAdminClient();
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .single();
+
   const { data, error } = await admin.auth.admin.deleteUser(userId);
   if (error) return { error: error.message };
+
+  if (actor) {
+    await logUserMgmtEvent({
+      tenantId:    formData.get("tenantId") as string ?? "",
+      actorId:     actor.id,
+      targetType:  "user",
+      targetId:    userId,
+      targetLabel: profile?.email ?? userId,
+      action:      "user.deleted",
+      oldData:     profile ? { email: profile.email } : undefined,
+    });
+  }
+
   return { data };
 }
