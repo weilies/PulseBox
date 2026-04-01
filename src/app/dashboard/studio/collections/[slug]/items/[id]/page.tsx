@@ -234,7 +234,7 @@ export default async function ItemDetailPage({
     // Fetch child collection fields
     const { data: childFieldsData } = await supabase
       .from("collection_fields")
-      .select("id, slug, name, field_type, options, is_required, is_translatable, sort_order")
+      .select("id, slug, name, field_type, options, is_required, is_translatable, show_in_grid, sort_order")
       .eq("collection_id", activeChild.id)
       .order("sort_order", { ascending: true });
 
