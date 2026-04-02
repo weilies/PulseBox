@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, Loader2, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { createItem, deleteItem } from "@/app/actions/studio";
 import { EditItemDialog, ItemFormFields, type Field, type CatalogItems } from "@/components/item-form-dialog";
@@ -180,33 +180,81 @@ export function ChildCollectionTabs({
   }
 
   const basePath = basePathOverride ?? `/dashboard/studio/collections/${parentCollectionSlug}/items/${parentItemId}`;
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+  };
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (!scrollContainerRef.current) return;
+    const distance = 200;
+    const newScroll = direction === 'left'
+      ? scrollContainerRef.current.scrollLeft - distance
+      : scrollContainerRef.current.scrollLeft + distance;
+    scrollContainerRef.current.scrollTo({ left: newScroll, behavior: 'smooth' });
+    setTimeout(checkScroll, 300);
+  };
 
   return (
     <div className="space-y-4">
-      {/* Tab bar — responsive with wrapping on mobile */}
-      <div className="flex flex-wrap gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {childCollections.map((child) => {
-          const isActive = child.slug === activeTab;
-          const count = childCounts[child.slug] ?? 0;
-          return (
-            <Link
-              key={child.slug}
-              href={`${basePath}?child_tab=${child.slug}&child_page=1`}
-              className={`px-2 sm:px-4 py-2 text-xs sm:text-sm whitespace-nowrap transition-colors flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ${
-                isActive
-                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-400 font-medium"
-                  : "text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
-              }`}
-            >
-              {child.name}
-              <span className={`rounded-full px-1 sm:px-1.5 py-0.5 text-[10px] sm:text-xs flex-shrink-0 ${
-                isActive ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
-              }`}>
-                {count}
-              </span>
-            </Link>
-          );
-        })}
+      {/* Tab bar — horizontal scroll carousel */}
+      <div className="flex items-center gap-2">
+        {/* Left scroll button */}
+        <button
+          onClick={() => scroll('left')}
+          disabled={!canScrollLeft}
+          className="flex-shrink-0 p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Scroll left"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        {/* Tabs container — horizontal scroll */}
+        <div
+          ref={scrollContainerRef}
+          onScroll={checkScroll}
+          className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto flex-1 scroll-smooth"
+          style={{ scrollBehavior: 'smooth', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {childCollections.map((child) => {
+            const isActive = child.slug === activeTab;
+            const count = childCounts[child.slug] ?? 0;
+            return (
+              <Link
+                key={child.slug}
+                href={`${basePath}?child_tab=${child.slug}&child_page=1`}
+                className={`px-4 py-2 text-sm whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0 ${
+                  isActive
+                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-400 font-medium"
+                    : "text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                }`}
+              >
+                {child.name}
+                <span className={`rounded-full px-1.5 py-0.5 text-xs ${
+                  isActive ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                }`}>
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Right scroll button */}
+        <button
+          onClick={() => scroll('right')}
+          disabled={!canScrollRight}
+          className="flex-shrink-0 p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Scroll right"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Active child grid */}
