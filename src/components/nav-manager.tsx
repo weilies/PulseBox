@@ -4,7 +4,7 @@ import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
- Folder, FolderOpen, Box, Database, ChevronDown, ChevronRight,
+ Folder, FolderOpen, Box, Database, ChevronDown, ChevronUp, ChevronRight,
  Plus, Pencil, Trash2, FolderPlus, ArrowRight, GripVertical, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
