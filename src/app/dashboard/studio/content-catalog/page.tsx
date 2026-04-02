@@ -34,7 +34,6 @@ const filterColumns: FilterColumn[] = [
  { key: "name", type: "text", placeholder: "Filter name..." },
  { key: "slug", type: "text", placeholder: "Filter slug..." },
  { key: "_desc", type: "none" },
- { key: "_items", type: "none" },
  { key: "_created", type: "none" },
 ];
 
@@ -100,7 +99,6 @@ export default async function ContentCatalogPage({
  <SortableHead label="Name" field="name" currentSort={sortCol} currentDir={dirLabel} basePath="/dashboard/studio/content-catalog" />
  <TableHead className="text-gray-500 dark:text-gray-400">Slug</TableHead>
  <TableHead className="text-gray-500 dark:text-gray-400">Description</TableHead>
- <TableHead className="text-center text-gray-500 dark:text-gray-400">Items</TableHead>
  <SortableHead label="Created" field="created_at" currentSort={sortCol} currentDir={dirLabel} basePath="/dashboard/studio/content-catalog" />
  {isSuperAdmin && <TableHead className="w-[80px]" />}
  </TableRow>
@@ -109,7 +107,7 @@ export default async function ContentCatalogPage({
  <TableBody>
  {rows.length === 0 ? (
  <TableRow>
- <TableCell colSpan={isSuperAdmin ? 6 : 5} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
+ <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
  No content catalogs yet.{isSuperAdmin ? " Create one to use with select fields." : ""}
  </TableCell>
  </TableRow>
@@ -132,11 +130,6 @@ export default async function ContentCatalogPage({
  </TableCell>
  <TableCell className="text-gray-500 dark:text-gray-400 text-sm max-w-[200px]">
  <span className="block truncate">{catalog.description ?? "—"}</span>
- </TableCell>
- <TableCell className="text-center">
- <Badge variant="outline" className="border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs">
- {catalog.content_catalog_items?.length ?? 0}
- </Badge>
  </TableCell>
  <TableCell className="text-gray-500 dark:text-gray-400 text-sm">
  {new Date(catalog.created_at).toLocaleDateString()}

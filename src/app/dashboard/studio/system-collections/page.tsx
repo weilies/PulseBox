@@ -38,7 +38,6 @@ const gridConfig: GridConfig = {
 const filterColumns: FilterColumn[] = [
  { key: "name", type: "text", placeholder: "Filter name..." },
  { key: "slug", type: "text", placeholder: "Filter slug..." },
- { key: "_fields", type: "none" },
  { key: "_created", type: "none" },
  { key: "_actions", type: "none" },
 ];
@@ -108,7 +107,6 @@ export default async function SystemCollectionsPage({
  <TableRow className="border-gray-200 dark:border-gray-700 hover:bg-transparent">
  <SortableHead label="Name" field="name" currentSort={sortCol} currentDir={dirLabel} basePath="/dashboard/studio/system-collections" />
  <TableHead className="text-gray-500 dark:text-gray-400">Slug</TableHead>
- <TableHead className="text-center text-gray-500 dark:text-gray-400">Fields</TableHead>
  <SortableHead label="Created" field="created_at" currentSort={sortCol} currentDir={dirLabel} basePath="/dashboard/studio/system-collections" />
  <TableHead className="w-[120px] text-gray-500 dark:text-gray-400">Actions</TableHead>
  </TableRow>
@@ -117,7 +115,7 @@ export default async function SystemCollectionsPage({
  <TableBody>
  {rows.length === 0 ? (
  <TableRow>
- <TableCell colSpan={5} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
+ <TableCell colSpan={4} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
  No system collections yet.
  </TableCell>
  </TableRow>
@@ -141,11 +139,6 @@ export default async function SystemCollectionsPage({
  </TableCell>
  <TableCell>
  <code className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400 font-mono">{c.slug}</code>
- </TableCell>
- <TableCell className="text-center">
- <Badge variant="outline" className="border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs">
- {c.collection_fields?.length ?? 0}
- </Badge>
  </TableCell>
  <TableCell className="text-gray-500 dark:text-gray-400 text-sm">
  {new Date(c.created_at).toLocaleDateString()}
