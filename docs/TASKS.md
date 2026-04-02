@@ -19,7 +19,7 @@
 
 ## Current Status
 
-_Last updated: 2026-03-25_
+_Last updated: 2026-04-02_
 
 ### In Progress
 
@@ -31,6 +31,30 @@ _Last updated: 2026-03-25_
   - Phase 4: API extensions + performance optimization
 
 ### Recently Completed
+
+- **Task 11: Integration Test - Multi-Column Catalogs (2 Apr 26)** — full end-to-end testing of multi-column catalogs with filtering
+  - ✅ All 8 test items PASSED
+  - ✅ Build successful, TypeScript clean
+  - ✅ Catalogs store multi-column schema in JSONB
+  - ✅ Items store extra fields in data JSONB column
+  - ✅ API endpoints support data field (GET/POST/PUT)
+  - ✅ Single filter condition works (equals operator)
+  - ✅ Multiple conditions use AND logic
+  - ✅ "No matching options" message displays correctly
+  - ✅ Display columns configured per field
+  - ✅ Stored value is just the value (not display text)
+  - ✅ Backwards compatible with existing catalogs
+  - Integration tests: PASSED (see test report above)
+  - Test report: [Test Results](superpowers/test-results/2026-04-02-task-11-integration-test.md)
+  - Next: Task 12 (Field Editor UI integration), Task 13 (Catalog Item Manager UI)
+
+- **Tasks 1-10: Multi-Column Catalogs Implementation (2-25 Mar 26)** — completed all backend/API work for multi-column catalogs
+  - Migration: `00060_multi_column_catalogs.sql` (columns + data JSONB fields)
+  - TypeScript types: `src/types/catalog.ts` (6 interfaces)
+  - Filtering library: `src/lib/catalog-filtering.ts` (filterCatalogItems + formatItemDisplay)
+  - API updated: `src/app/api/content-catalogs/` endpoints (data JSONB support)
+  - Components: FieldFilterBuilder, FieldDisplaySelector, CatalogItemEditor
+  - Form integration: `item-form-dialog.tsx` (filtering + display columns)
 
 - **DB Migrations confirmed applied (25 Mar 26)** — all migrations 00001–00035 applied to Supabase cloud
   - `00030` — swap super tenant slug: bipo → nextnovas
