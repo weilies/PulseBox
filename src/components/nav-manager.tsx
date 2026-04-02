@@ -138,6 +138,37 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  return siblings.findIndex(f => f.id === folderId);
  };
 
+ // ---- move folder handler ----
+ const handleMoveFolder = async (
+ folderId: string,
+ parentId: string | null,
+ direction: 'up' | 'down'
+ ) => {
+ startTransition(async () => {
+ const siblings = getFolderSiblings(parentId);
+ const currentIndex = getFolderPosition(folderId, parentId);
+
+ let targetIndex: number;
+ if (direction === 'up' && currentIndex > 0) {
+ targetIndex = currentIndex - 1;
+ } else if (direction === 'down' && currentIndex < siblings.length - 1) {
+ targetIndex = currentIndex + 1;
+ } else {
+ return; // out of bounds, do nothing
+ }
+
+ const targetSortOrder = siblings[targetIndex].sort_order;
+ const fd = new FormData();
+ fd.set("folder_id", folderId);
+ if (parentId) fd.set("parent_id", parentId);
+ fd.set("sort_order", String(targetSortOrder));
+
+ const result = await moveNavFolderAction(fd);
+ if (result.error) toast.error(result.error);
+ else { refresh(); }
+ });
+ };
+
  // ---- helpers ----
  function refresh() {
  router.refresh();
