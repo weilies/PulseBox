@@ -39,6 +39,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_installs: {
+        Row: {
+          app_id: string
+          config: Json
+          id: string
+          installed_at: string
+          installed_by: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          app_id: string
+          config?: Json
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          app_id?: string
+          config?: Json
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_installs_app_id_fkey"
+            columns: ["app_id"]
+            isOneToOne: false
+            referencedRelation: "apps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_installs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_logs: {
         Row: {
           category: string
@@ -80,6 +125,54 @@ export type Database = {
           },
         ]
       }
+      apps: {
+        Row: {
+          author: string
+          bundle: Json
+          category: string
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_system: boolean
+          name: string
+          slug: string
+          status: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          author?: string
+          bundle?: Json
+          category?: string
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean
+          name: string
+          slug: string
+          status?: string
+          updated_at?: string
+          version?: string
+        }
+        Update: {
+          author?: string
+          bundle?: Json
+          category?: string
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean
+          name?: string
+          slug?: string
+          status?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
       collection_fields: {
         Row: {
           collection_id: string
@@ -91,6 +184,7 @@ export type Database = {
           is_unique: boolean
           name: string
           options: Json
+          show_in_grid: boolean
           slug: string
           sort_order: number
           updated_at: string
@@ -105,6 +199,7 @@ export type Database = {
           is_unique?: boolean
           name: string
           options?: Json
+          show_in_grid?: boolean
           slug: string
           sort_order?: number
           updated_at?: string
@@ -119,6 +214,7 @@ export type Database = {
           is_unique?: boolean
           name?: string
           options?: Json
+          show_in_grid?: boolean
           slug?: string
           sort_order?: number
           updated_at?: string
@@ -242,7 +338,7 @@ export type Database = {
           item_id: string
           new_data: Json | null
           old_data: Json | null
-          tenant_id: string
+          tenant_id: string | null
         }
         Insert: {
           action: string
@@ -253,7 +349,7 @@ export type Database = {
           item_id: string
           new_data?: Json | null
           old_data?: Json | null
-          tenant_id: string
+          tenant_id?: string | null
         }
         Update: {
           action?: string
@@ -264,11 +360,72 @@ export type Database = {
           item_id?: string
           new_data?: Json | null
           old_data?: Json | null
-          tenant_id?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
+      collection_rules: {
+        Row: {
+          actions: Json
+          app_id: string | null
+          collection_slug: string
+          conditions: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          priority: number
+          require_parent: boolean
+          rule_type: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          app_id?: string | null
+          collection_slug: string
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          priority?: number
+          require_parent?: boolean
+          rule_type: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          app_id?: string | null
+          collection_slug?: string
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          priority?: number
+          require_parent?: boolean
+          rule_type?: string
+          tenant_id?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "collection_items_audit_tenant_id_fkey"
+            foreignKeyName: "collection_rules_app_id_fkey"
+            columns: ["app_id"]
+            isOneToOne: false
+            referencedRelation: "apps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_rules_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -327,11 +484,63 @@ export type Database = {
           },
         ]
       }
+      collection_webhooks: {
+        Row: {
+          collection_slug: string
+          created_at: string
+          created_by: string | null
+          events: string[]
+          id: string
+          is_active: boolean
+          name: string
+          secret: string | null
+          tenant_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          collection_slug: string
+          created_at?: string
+          created_by?: string | null
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          name: string
+          secret?: string | null
+          tenant_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          collection_slug?: string
+          created_at?: string
+          created_by?: string | null
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          name?: string
+          secret?: string | null
+          tenant_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_webhooks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       collections: {
         Row: {
+          app_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
+          hooks: Json
           icon: string | null
           id: string
           is_hidden: boolean
@@ -343,9 +552,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          app_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
+          hooks?: Json
           icon?: string | null
           id?: string
           is_hidden?: boolean
@@ -357,9 +568,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          app_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
+          hooks?: Json
           icon?: string | null
           id?: string
           is_hidden?: boolean
@@ -372,6 +585,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "collections_app_id_fkey"
+            columns: ["app_id"]
+            isOneToOne: false
+            referencedRelation: "apps"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "collections_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -383,6 +603,7 @@ export type Database = {
       content_catalog_items: {
         Row: {
           catalog_id: string
+          data: Json | null
           id: string
           is_active: boolean
           label: string
@@ -391,6 +612,7 @@ export type Database = {
         }
         Insert: {
           catalog_id: string
+          data?: Json | null
           id?: string
           is_active?: boolean
           label: string
@@ -399,6 +621,7 @@ export type Database = {
         }
         Update: {
           catalog_id?: string
+          data?: Json | null
           id?: string
           is_active?: boolean
           label?: string
@@ -417,6 +640,7 @@ export type Database = {
       }
       content_catalogs: {
         Row: {
+          columns: Json | null
           created_at: string
           description: string | null
           id: string
@@ -424,6 +648,7 @@ export type Database = {
           slug: string
         }
         Insert: {
+          columns?: Json | null
           created_at?: string
           description?: string | null
           id?: string
@@ -431,6 +656,7 @@ export type Database = {
           slug: string
         }
         Update: {
+          columns?: Json | null
           created_at?: string
           description?: string | null
           id?: string
@@ -438,6 +664,77 @@ export type Database = {
           slug?: string
         }
         Relationships: []
+      }
+      event_logs: {
+        Row: {
+          actor_id: string | null
+          actor_type: string | null
+          category: string
+          created_at: string
+          duration_ms: number | null
+          event_type: string
+          id: string
+          metadata: Json | null
+          request_body: Json | null
+          request_url: string | null
+          response_body: string | null
+          response_status: number | null
+          scope_id: string | null
+          scope_type: string | null
+          source_id: string | null
+          source_type: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_type?: string | null
+          category: string
+          created_at?: string
+          duration_ms?: number | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          request_body?: Json | null
+          request_url?: string | null
+          response_body?: string | null
+          response_status?: number | null
+          scope_id?: string | null
+          scope_type?: string | null
+          source_id?: string | null
+          source_type?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_type?: string | null
+          category?: string
+          created_at?: string
+          duration_ms?: number | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          request_body?: Json | null
+          request_url?: string | null
+          response_body?: string | null
+          response_status?: number | null
+          scope_id?: string | null
+          scope_type?: string | null
+          source_id?: string | null
+          source_type?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       modules: {
         Row: {
@@ -739,6 +1036,115 @@ export type Database = {
           },
         ]
       }
+      saved_queries: {
+        Row: {
+          created_at: string
+          created_by: string
+          definition: Json
+          description: string | null
+          id: string
+          name: string
+          slug: string
+          status: Database["public"]["Enums"]["query_status"]
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          definition?: Json
+          description?: string | null
+          id?: string
+          name: string
+          slug: string
+          status?: Database["public"]["Enums"]["query_status"]
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          definition?: Json
+          description?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          status?: Database["public"]["Enums"]["query_status"]
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_queries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          action_label: string | null
+          action_url: string | null
+          body: string | null
+          created_at: string
+          id: string
+          priority: string
+          read_at: string | null
+          source: string | null
+          source_id: string | null
+          status: string
+          tenant_id: string
+          title: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          action_label?: string | null
+          action_url?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          priority?: string
+          read_at?: string | null
+          source?: string | null
+          source_id?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          action_label?: string | null
+          action_url?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          priority?: string
+          read_at?: string | null
+          source?: string | null
+          source_id?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_apps: {
         Row: {
           app_id: string
@@ -880,30 +1286,33 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          is_active: boolean
+          is_active: boolean | null
           is_default: boolean
           role: string
           role_id: string | null
+          status: string
           tenant_id: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           is_default?: boolean
           role?: string
           role_id?: string | null
+          status?: string
           tenant_id: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           is_default?: boolean
           role?: string
           role_id?: string | null
+          status?: string
           tenant_id?: string
           user_id?: string
         }
@@ -967,6 +1376,171 @@ export type Database = {
         }
         Relationships: []
       }
+      user_mgmt_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_type: string
+          created_at: string
+          id: string
+          new_data: Json | null
+          old_data: Json | null
+          status: string
+          target_id: string
+          target_label: string | null
+          target_type: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          status?: string
+          target_id: string
+          target_label?: string | null
+          target_type: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          status?: string
+          target_id?: string
+          target_label?: string | null
+          target_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_mgmt_audit_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_deliveries: {
+        Row: {
+          attempt_count: number
+          collection_slug: string
+          created_at: string
+          event_type: string
+          id: string
+          item_id: string | null
+          last_attempt_at: string | null
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+          status: string
+          webhook_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          collection_slug: string
+          created_at?: string
+          event_type: string
+          id?: string
+          item_id?: string | null
+          last_attempt_at?: string | null
+          payload: Json
+          response_body?: string | null
+          response_status?: number | null
+          status?: string
+          webhook_id: string
+        }
+        Update: {
+          attempt_count?: number
+          collection_slug?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          item_id?: string | null
+          last_attempt_at?: string | null
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+          status?: string
+          webhook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "collection_webhooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhooks: {
+        Row: {
+          can_block: boolean
+          config: Json
+          created_at: string
+          created_by: string | null
+          events: string[]
+          id: string
+          is_active: boolean
+          name: string
+          scope_id: string | null
+          scope_type: string
+          secret: string | null
+          tenant_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          can_block?: boolean
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          name: string
+          scope_id?: string | null
+          scope_type?: string
+          secret?: string | null
+          tenant_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          can_block?: boolean
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          name?: string
+          scope_id?: string | null
+          scope_type?: string
+          secret?: string | null
+          tenant_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhooks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -977,6 +1551,23 @@ export type Database = {
         Returns: string[]
       }
       get_accessible_pages: { Args: never; Returns: string[] }
+      get_collection_items_sorted: {
+        Args: {
+          p_collection_id: string
+          p_limit?: number
+          p_offset?: number
+          p_sort_ascending?: boolean
+          p_sort_field: string
+          p_tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          data: Json
+          id: string
+          total_count: number
+          updated_at: string
+        }[]
+      }
       get_my_licensed_module_ids: { Args: never; Returns: string[] }
       get_my_role_in_tenant: { Args: { p_tenant_id: string }; Returns: string }
       get_my_tenant_ids: { Args: never; Returns: string[] }
@@ -1001,7 +1592,7 @@ export type Database = {
       is_super_admin: { Args: never; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      query_status: "draft" | "published"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1131,6 +1722,8 @@ export const Constants = {
     Enums: {},
   },
   public: {
-    Enums: {},
+    Enums: {
+      query_status: ["draft", "published"],
+    },
   },
 } as const
