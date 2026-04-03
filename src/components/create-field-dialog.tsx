@@ -102,8 +102,8 @@ export function CreateFieldDialog({ collectionId, collectionSlug, allCollections
   fetch(`/api/content-catalogs/${catalogSlug}`)
    .then((res) => res.json())
    .then((data) => {
-    if (data?.catalog?.columns) {
-     setCatalogSchema(data.catalog.columns as CatalogSchema);
+    if (data?.data?.columns) {
+     setCatalogSchema(data.data.columns as CatalogSchema);
     } else {
      setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
     }
