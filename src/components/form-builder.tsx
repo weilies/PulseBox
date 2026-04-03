@@ -40,6 +40,7 @@ import type {
   FormElementNote,
   FormElementButton,
   FormElementTabGroup,
+  FormElementColumnGroup,
   FieldWidget,
 } from "@/types/form-layout";
 
@@ -78,6 +79,7 @@ function collectPlacedSlugs(elements: FormElement[]): string[] {
   return elements.flatMap((el) => {
     if (el.type === "field") return [el.fieldSlug];
     if (el.type === "tab-group") return el.tabs.flatMap((t) => collectPlacedSlugs(t.elements));
+    if (el.type === "column-group") return el.slots.flatMap((slot) => slot.map((s) => s.fieldSlug));
     return [];
   });
 }
@@ -540,6 +542,65 @@ function ElementRow({
     );
   }
 
+  if (element.type === "column-group") {
+    return (
+      <div className={cn("rounded-lg border border-green-500/30 bg-green-50/30 dark:bg-green-950/20 p-3 space-y-2", isDragOver && "border-blue-400", isDragging && "opacity-50")}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GripVertical className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 cursor-grab shrink-0" />
+            <span className="text-xs font-medium text-green-700 dark:text-green-400">
+              {element.columns}-Column Layout
+            </span>
+          </div>
+          <button onClick={onRemove} className="p-0.5 text-gray-500 dark:text-gray-400 hover:text-red-400 rounded" title="Remove">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className={`grid gap-2 ${element.columns === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+          {element.slots.map((slot, colIdx) => (
+            <div
+              key={colIdx}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const fieldSlug = e.dataTransfer.getData("fieldSlug");
+                if (!fieldSlug || placedSlugs.has(fieldSlug)) return;
+                const newSlots = element.slots.map((s, si) =>
+                  si === colIdx ? [...s, { type: "field" as const, fieldSlug, width: "full" as const }] : s
+                );
+                onPatch({ slots: newSlots } as Partial<FormElementColumnGroup>);
+              }}
+              className="min-h-[60px] rounded border border-dashed border-gray-300 dark:border-gray-600 p-2 space-y-1"
+            >
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Col {colIdx + 1}</p>
+              {slot.map((slotEl, slotIdx) => {
+                const f = fields.find((fi) => fi.slug === slotEl.fieldSlug);
+                return (
+                  <div key={slotIdx} className="flex items-center justify-between gap-1 bg-white dark:bg-gray-800 rounded px-2 py-1 border border-gray-200 dark:border-gray-700 text-xs">
+                    <span className="text-gray-900 dark:text-gray-100 truncate">{f?.name ?? slotEl.fieldSlug}</span>
+                    <button
+                      onClick={() => {
+                        const newSlots = element.slots.map((s, si) =>
+                          si === colIdx ? s.filter((_, fi) => fi !== slotIdx) : s
+                        );
+                        onPatch({ slots: newSlots } as Partial<FormElementColumnGroup>);
+                      }}
+                      className="text-gray-500 dark:text-gray-400 hover:text-red-400 shrink-0"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Drag field here</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -832,6 +893,15 @@ function AddElementDrawer({
     } as FormElementTabGroup);
   }
 
+  function addColumnGroup(columns: 2 | 3) {
+    onAdd({
+      type: "column-group",
+      id: genId(),
+      columns,
+      slots: Array.from({ length: columns }, () => []),
+    } as FormElementColumnGroup);
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -863,8 +933,10 @@ function AddElementDrawer({
             {availableFields.map((f) => (
               <button
                 key={f.slug}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("fieldSlug", f.slug)}
                 onClick={() => addField(f.slug)}
-                className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+                className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group cursor-grab"
               >
                 <div className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />
                 <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate">{f.name}</span>
@@ -926,6 +998,28 @@ function AddElementDrawer({
               <div className="flex-1">
                 <p className="text-sm text-gray-900 dark:text-gray-100">Tab Group</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Nested tabs within this tab</p>
+              </div>
+              <Plus className="h-3.5 w-3.5 text-blue-400 opacity-0 group-hover:opacity-100 shrink-0" />
+            </button>
+            <button
+              onClick={() => addColumnGroup(2)}
+              className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+            >
+              <Layers className="h-4 w-4 text-green-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-900 dark:text-gray-100">2 Columns</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Two equal side-by-side columns</p>
+              </div>
+              <Plus className="h-3.5 w-3.5 text-blue-400 opacity-0 group-hover:opacity-100 shrink-0" />
+            </button>
+            <button
+              onClick={() => addColumnGroup(3)}
+              className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+            >
+              <Layers className="h-4 w-4 text-green-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-900 dark:text-gray-100">3 Columns</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Three equal columns</p>
               </div>
               <Plus className="h-3.5 w-3.5 text-blue-400 opacity-0 group-hover:opacity-100 shrink-0" />
             </button>

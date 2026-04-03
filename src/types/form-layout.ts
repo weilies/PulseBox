@@ -27,12 +27,20 @@ export type FormElementTabGroup = {
   tabs: FormTab[];
 };
 
+export type FormElementColumnGroup = {
+  type: "column-group";
+  id: string;
+  columns: 2 | 3;
+  slots: FormElementField[][];
+};
+
 export type FormElement =
   | FormElementField
   | FormElementNote
   | FormElementButton
   | FormElementDivider
-  | FormElementTabGroup;
+  | FormElementTabGroup
+  | FormElementColumnGroup;
 
 export type FormTab = {
   id: string;
