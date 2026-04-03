@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { CatalogItemEditor } from "@/components/catalog-item-editor";
-import { CatalogSchema } from "@/types/catalog";
+import {
+ createCatalogItem as createCatalogItemAction,
+ updateCatalogItem as updateCatalogItemAction,
+} from "@/app/actions/content-catalog";
 
 function slugify(text: string) {
  return text.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -29,47 +31,30 @@ export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps)
  const [label, setLabel] = useState("");
  const [value, setValue] = useState("");
  const [loading, setLoading] = useState(false);
- const [itemData, setItemData] = useState<Record<string, unknown>>({});
- const [catalogSchema, setCatalogSchema] = useState<CatalogSchema | null>(null);
-
- useEffect(() => {
-  if (!open || !catalogSlug) return;
-  fetch(`/api/content-catalogs/${catalogSlug}`)
-   .then((res) => res.json())
-   .then((data) => {
-    if (data?.data?.columns) {
-     setCatalogSchema(data.data.columns as CatalogSchema);
-    }
-   })
-   .catch(() => {/* silent fail */});
- }, [open, catalogSlug]);
 
  async function handleSubmit(e: React.FormEvent) {
   e.preventDefault();
   setLoading(true);
   try {
-   const response = await fetch(`/api/content-catalogs/${catalogSlug}/items`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ label, value, catalog_id: catalogId, data: itemData }),
-   });
-   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    toast.error(body?.error ?? "Failed to create item");
+   const fd = new FormData();
+   fd.set("catalog_id", catalogId);
+   fd.set("catalog_slug", catalogSlug);
+   fd.set("label", label);
+   fd.set("value", value);
+   const result = await createCatalogItemAction(fd);
+   if (result.error) {
+    toast.error(result.error);
     return;
    }
    toast.success("Item added");
    setOpen(false);
-   setLabel(""); setValue(""); setItemData({});
+   setLabel("");
+   setValue("");
    router.refresh();
   } finally {
    setLoading(false);
   }
  }
-
- const extraColumns = catalogSchema?.columns.filter(
-  (col) => col.key !== "label" && col.key !== "value"
- ) ?? [];
 
  return (
   <Dialog open={open} onOpenChange={setOpen}>
@@ -106,18 +91,11 @@ export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps)
      className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder:text-gray-500/50 dark:placeholder:text-gray-400/50"
     />
     </div>
-    {extraColumns.length > 0 && (
-    <CatalogItemEditor
-     columnSchema={extraColumns}
-     initialData={itemData}
-     onChange={setItemData}
-    />
-    )}
    </div>
    <DialogFooter className="mt-6">
     <DialogClose render={<Button type="button" variant="outline" className="border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" />}>Cancel</DialogClose>
     <Button type="submit" disabled={loading || !label.trim() || !value.trim()}
-    className="bg-blue-50 dark:bg-blue-950 border border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/30">
+    className="bg-blue-600 hover:bg-blue-700 text-white">
     {loading ? "Adding..." : "Add Item"}
     </Button>
    </DialogFooter>
@@ -145,42 +123,28 @@ export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, o
  const [value, setValue] = useState(item.value);
  const [isActive, setIsActive] = useState(item.is_active);
  const [loading, setLoading] = useState(false);
- const [itemData, setItemData] = useState<Record<string, unknown>>((item.data as Record<string, unknown>) || {});
- const [catalogSchema, setCatalogSchema] = useState<CatalogSchema | null>(null);
 
  useEffect(() => {
   if (open) {
    setLabel(item.label);
    setValue(item.value);
    setIsActive(item.is_active);
-   setItemData((item.data as Record<string, unknown>) || {});
   }
  }, [open, item]);
-
- useEffect(() => {
-  if (!open || !catalogSlug) return;
-  fetch(`/api/content-catalogs/${catalogSlug}`)
-   .then((res) => res.json())
-   .then((data) => {
-    if (data?.data?.columns) {
-     setCatalogSchema(data.data.columns as CatalogSchema);
-    }
-   })
-   .catch(() => {/* silent fail */});
- }, [open, catalogSlug]);
 
  async function handleSubmit(e: React.FormEvent) {
   e.preventDefault();
   setLoading(true);
   try {
-   const response = await fetch(`/api/content-catalogs/${catalogSlug}/items/${item.id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ label, value, is_active: isActive, data: itemData }),
-   });
-   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    toast.error(body?.error ?? "Failed to update item");
+   const fd = new FormData();
+   fd.set("item_id", item.id);
+   fd.set("catalog_slug", catalogSlug);
+   fd.set("label", label);
+   fd.set("value", value);
+   fd.set("is_active", String(isActive));
+   const result = await updateCatalogItemAction(fd);
+   if (result.error) {
+    toast.error(result.error);
     return;
    }
    toast.success("Item updated");
@@ -190,10 +154,6 @@ export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, o
    setLoading(false);
   }
  }
-
- const extraColumns = catalogSchema?.columns.filter(
-  (col) => col.key !== "label" && col.key !== "value"
- ) ?? [];
 
  return (
   <Dialog open={open} onOpenChange={onOpenChange}>
@@ -224,25 +184,18 @@ export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, o
     />
     <Label htmlFor="is_active" className="text-gray-900 dark:text-gray-100 cursor-pointer">Active</Label>
     </div>
-    {extraColumns.length > 0 && (
-    <CatalogItemEditor
-     columnSchema={extraColumns}
-     initialData={itemData}
-     onChange={setItemData}
-    />
-    )}
    </div>
    <DialogFooter className="mt-6">
     <div className="flex w-full items-center justify-between">
     {onDeleteRequest ? (
-     <Button type="button" variant="outline" size="sm" className="text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300" onClick={onDeleteRequest}>
+     <Button type="button" variant="outline" size="sm" className="border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300" onClick={onDeleteRequest}>
      Delete
      </Button>
     ) : <span />}
     <div className="flex gap-2">
      <DialogClose render={<Button type="button" variant="outline" className="border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" />}>Cancel</DialogClose>
      <Button type="submit" disabled={loading}
-     className="bg-blue-50 dark:bg-blue-950 border border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/30">
+     className="bg-blue-600 hover:bg-blue-700 text-white">
      {loading ? "Saving..." : "Save"}
      </Button>
     </div>
