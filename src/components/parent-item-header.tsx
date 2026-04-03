@@ -7,6 +7,7 @@ import { Pencil } from "lucide-react";
 import { EditItemDialog, type Field, type CatalogItems } from "@/components/item-form-dialog";
 import type { TenantLanguage } from "@/types/translations";
 import type { ParentRecordLayout } from "@/types/parent-record-layout";
+import type { FormLayout } from "@/types/form-layout";
 import { getFieldLabel } from "@/lib/i18n";
 import { formatDate, formatDatetime } from "@/lib/timezone-constants";
 import { FileCellDownload } from "@/components/file-cell-download";
@@ -33,6 +34,7 @@ interface Props {
   tenantLanguages: TenantLanguage[];
   displayKeyFields: string[];
   parentLayout?: ParentRecordLayout | null;
+  formLayout?: FormLayout | null;
 }
 
 function renderValue(
@@ -84,6 +86,7 @@ export function ParentItemHeader({
   tenantLanguages,
   displayKeyFields,
   parentLayout,
+  formLayout,
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
 
@@ -204,6 +207,7 @@ export function ParentItemHeader({
           tenantLanguages={tenantLanguages}
           currentLocale={currentLocale}
           timezone={timezone}
+          formLayout={formLayout}
         />
       )}
     </>

@@ -15,6 +15,7 @@ import { ChildCollectionTabs } from "@/components/child-collection-tabs";
 import { ParentItemHeader } from "@/components/parent-item-header";
 import type { Field, CatalogItems } from "@/components/item-form-dialog";
 import type { ParentRecordLayout } from "@/types/parent-record-layout";
+import type { FormLayout } from "@/types/form-layout";
 import { getTenantLanguages } from "@/lib/services/translations.service";
 
 type Collection = {
@@ -343,6 +344,7 @@ export default async function ItemDetailPage({
 
   // Extract parent record layout from metadata
   const parentRecordLayout = (collection.metadata?.parent_record_layout ?? null) as ParentRecordLayout | null;
+  const formLayout = (collection.metadata?.form_layout ?? null) as FormLayout | null;
 
   return (
     <div className="p-6 space-y-6 max-w-6xl">
@@ -371,6 +373,7 @@ export default async function ItemDetailPage({
         tenantLanguages={tenantLanguages ?? []}
         displayKeyFields={displayKeyFields}
         parentLayout={parentRecordLayout}
+        formLayout={formLayout}
       />
 
       {/* Child collection tabs — filtered by read permission */}
