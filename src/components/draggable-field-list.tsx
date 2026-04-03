@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { GripVertical } from "lucide-react";
@@ -21,6 +21,7 @@ const FIELD_TYPE_LABELS: Record<string, string> = {
   richtext: "Rich Text",
   json: "JSON",
   relation: "Relation",
+  password: "Password / Secret",
 };
 
 const FIELD_TYPE_COLORS: Record<string, string> = {
@@ -35,6 +36,7 @@ const FIELD_TYPE_COLORS: Record<string, string> = {
   richtext: "border-blue-500/40 text-blue-600 dark:text-blue-400",
   json: "border-zinc-500/40 text-zinc-400",
   relation: "border-blue-500/40 text-blue-600 dark:text-blue-400",
+  password: "border-red-500/40 text-red-400",
 };
 
 type Field = {
@@ -72,6 +74,11 @@ export function DraggableFieldList({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Sync with server-rendered data after router.refresh() re-renders the parent
+  useEffect(() => {
+    setFields(initialFields);
+  }, [initialFields]);
 
   async function handleDrop() {
     if (!draggedId) return;
