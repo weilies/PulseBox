@@ -11,11 +11,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { Plus, Trash2, ChevronUp, ChevronDown, Save } from "lucide-react";
 import { saveParentRecordLayout } from "@/app/actions/studio";
@@ -57,6 +57,7 @@ export function ParentRecordLayoutBuilder({
     initialLayout?.elements ?? []
   );
   const [saving, setSaving] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const placedSlugs = new Set(elements.map((e) => e.fieldSlug));
   const availableFields = fields.filter((f) => !placedSlugs.has(f.slug));
@@ -208,27 +209,44 @@ export function ParentRecordLayoutBuilder({
           </div>
         )}
 
-        {/* Add field dropdown */}
-        {availableFields.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                Add Field
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {availableFields.map((f) => (
-                <DropdownMenuItem key={f.id} onClick={() => handleAddField(f.slug)}>
-                  {f.name}{" "}
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {FIELD_TYPE_LABELS[f.field_type] || f.field_type}
-                  </Badge>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {/* Add Element button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setDrawerOpen(true)}
+          disabled={availableFields.length === 0}
+          className="gap-1.5 border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add Element
+        </Button>
+
+        {/* Add Element Sheet */}
+        <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <SheetContent side="right" className="w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700">
+            <SheetHeader>
+              <SheetTitle className="text-gray-900 dark:text-gray-100 text-sm font-semibold">Add Field</SheetTitle>
+            </SheetHeader>
+            <div className="mt-4 space-y-1">
+              {availableFields.length === 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">All fields are placed.</p>
+              ) : (
+                availableFields.map((f) => (
+                  <button
+                    key={f.slug}
+                    onClick={() => { handleAddField(f.slug); setDrawerOpen(false); }}
+                    className="w-full flex items-start gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-left transition-colors"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{f.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{FIELD_TYPE_LABELS[f.field_type] ?? f.field_type}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* Grid preview */}
