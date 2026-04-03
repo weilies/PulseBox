@@ -25,6 +25,9 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { updateField, deleteField } from "@/app/actions/studio";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { FieldFilterBuilder } from "@/components/field-filter-builder";
+import { FieldDisplaySelector } from "@/components/field-display-selector";
+import { CatalogSchema, CatalogFilterCondition } from "@/types/catalog";
 
 type SimpleCollection = { id: string; name: string; slug: string };
 
@@ -84,6 +87,9 @@ export function EditFieldDialog({
   const [choices, setChoices] = useState("");
   const [catalogSlug, setCatalogSlug] = useState("");
   const [selectMode, setSelectMode] = useState<"choices" | "catalog">("choices");
+  const [filterConditions, setFilterConditions] = useState<CatalogFilterCondition[]>([]);
+  const [displayColumns, setDisplayColumns] = useState<string[]>(["label", "value"]);
+  const [catalogSchema, setCatalogSchema] = useState<CatalogSchema | null>(null);
 
   // Sync state from props whenever dialog opens
   useEffect(() => {
@@ -116,6 +122,8 @@ export function EditFieldDialog({
       if (opts.catalog_slug) {
         setSelectMode("catalog");
         setCatalogSlug(opts.catalog_slug as string);
+        setFilterConditions((opts.filter_conditions as CatalogFilterCondition[]) || []);
+        setDisplayColumns((opts.display_columns as string[]) || ["label", "value"]);
       } else {
         setSelectMode("choices");
         setChoices(Array.isArray(opts.choices) ? (opts.choices as string[]).join(", ") : "");
@@ -123,6 +131,25 @@ export function EditFieldDialog({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!catalogSlug) {
+      setCatalogSchema(null);
+      return;
+    }
+    fetch(`/api/content-catalogs/${catalogSlug}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.catalog?.columns) {
+          setCatalogSchema(data.catalog.columns as CatalogSchema);
+        } else {
+          setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
+        }
+      })
+      .catch(() => {
+        setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
+      });
+  }, [catalogSlug]);
 
   function buildOptions(): Record<string, unknown> {
     switch (fieldType) {
@@ -136,7 +163,14 @@ export function EditFieldDialog({
         };
       case "select":
       case "multiselect":
-        if (selectMode === "catalog") return { catalog_slug: catalogSlug };
+        if (selectMode === "catalog") {
+          const catalogOpts: Record<string, unknown> = { catalog_slug: catalogSlug };
+          if (filterConditions.length > 0) catalogOpts.filter_conditions = filterConditions;
+          if (displayColumns.length > 0 && !(displayColumns.length === 2 && displayColumns.includes("label") && displayColumns.includes("value"))) {
+            catalogOpts.display_columns = displayColumns;
+          }
+          return catalogOpts;
+        }
         return {
           choices: choices
             .split(",")
@@ -337,6 +371,23 @@ export function EditFieldDialog({
                   <div className="space-y-1">
                     <Label className="text-sm text-gray-900 dark:text-gray-100">Catalog Slug</Label>
                     <Input placeholder="gender" value={catalogSlug} onChange={(e) => setCatalogSlug(e.target.value)} className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100" />
+                    {catalogSlug && (
+                      <div className="mt-4 space-y-4 border-t border-gray-700 pt-4">
+                        <FieldFilterBuilder
+                          conditions={filterConditions}
+                          onConditionsChange={setFilterConditions}
+                          catalogColumns={catalogSchema?.columns || []}
+                          parentFields={[]}
+                        />
+                        <FieldDisplaySelector
+                          displayColumns={displayColumns}
+                          onDisplayColumnsChange={setDisplayColumns}
+                          catalogColumns={(catalogSchema?.columns || []).filter(
+                            (col) => col.key !== "label" && col.key !== "value"
+                          )}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

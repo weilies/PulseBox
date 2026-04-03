@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,9 @@ import {
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createField } from "@/app/actions/studio";
+import { FieldFilterBuilder } from "@/components/field-filter-builder";
+import { FieldDisplaySelector } from "@/components/field-display-selector";
+import { CatalogSchema, CatalogFilterCondition } from "@/types/catalog";
 
 function slugify(text: string) {
  return text
@@ -79,6 +82,9 @@ export function CreateFieldDialog({ collectionId, collectionSlug, allCollections
  const [selectMode, setSelectMode] = useState<"choices" | "catalog">("choices");
  const [choices, setChoices] = useState(""); // comma-separated
  const [catalogSlug, setCatalogSlug] = useState("");
+ const [filterConditions, setFilterConditions] = useState<CatalogFilterCondition[]>([]);
+ const [displayColumns, setDisplayColumns] = useState<string[]>(["label", "value"]);
+ const [catalogSchema, setCatalogSchema] = useState<CatalogSchema | null>(null);
 
  // File options
  const [allowedExtensions, setAllowedExtensions] = useState("");
@@ -87,6 +93,25 @@ export function CreateFieldDialog({ collectionId, collectionSlug, allCollections
  const [relatedCollectionId, setRelatedCollectionId] = useState("");
  const [relationType, setRelationType] = useState<"m2o" | "o2o" | "m2m">("m2o");
  const [relationshipStyle, setRelationshipStyle] = useState<"reference" | "child_of" | "link">("reference");
+
+ useEffect(() => {
+  if (!catalogSlug) {
+   setCatalogSchema(null);
+   return;
+  }
+  fetch(`/api/content-catalogs/${catalogSlug}`)
+   .then((res) => res.json())
+   .then((data) => {
+    if (data?.catalog?.columns) {
+     setCatalogSchema(data.catalog.columns as CatalogSchema);
+    } else {
+     setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
+    }
+   })
+   .catch(() => {
+    setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
+   });
+ }, [catalogSlug]);
 
  function buildOptions(): Record<string, unknown> {
  switch (fieldType) {
@@ -101,7 +126,12 @@ export function CreateFieldDialog({ collectionId, collectionSlug, allCollections
  case "select":
  case "multiselect":
  if (selectMode === "catalog") {
- return { catalog_slug: catalogSlug };
+  const catalogOpts: Record<string, unknown> = { catalog_slug: catalogSlug };
+  if (filterConditions.length > 0) catalogOpts.filter_conditions = filterConditions;
+  if (displayColumns.length > 0 && !(displayColumns.length === 2 && displayColumns.includes("label") && displayColumns.includes("value"))) {
+   catalogOpts.display_columns = displayColumns;
+  }
+  return catalogOpts;
  }
  return {
  choices: choices
@@ -178,6 +208,9 @@ export function CreateFieldDialog({ collectionId, collectionSlug, allCollections
  setSelectMode("choices");
  setChoices("");
  setCatalogSlug("");
+ setFilterConditions([]);
+ setDisplayColumns(["label", "value"]);
+ setCatalogSchema(null);
  setAllowedExtensions("");
  setRelatedCollectionId("");
  setRelationType("m2o");
@@ -417,6 +450,23 @@ export function CreateFieldDialog({ collectionId, collectionSlug, allCollections
  <p className="text-xs text-gray-500 dark:text-gray-400">
  e.g. gender, country, marital-status, employment-type
  </p>
+ {catalogSlug && (
+  <div className="mt-4 space-y-4 border-t border-gray-700 pt-4">
+   <FieldFilterBuilder
+    conditions={filterConditions}
+    onConditionsChange={setFilterConditions}
+    catalogColumns={catalogSchema?.columns || []}
+    parentFields={[]}
+   />
+   <FieldDisplaySelector
+    displayColumns={displayColumns}
+    onDisplayColumnsChange={setDisplayColumns}
+    catalogColumns={(catalogSchema?.columns || []).filter(
+     (col) => col.key !== "label" && col.key !== "value"
+    )}
+   />
+  </div>
+ )}
  </div>
  )}
  </div>
