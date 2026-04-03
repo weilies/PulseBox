@@ -139,7 +139,32 @@ export async function getActivityLogs(limit = 100, filters?: {
         for (const c of cols ?? []) slugMap.set(c.id, c.slug);
       }
 
+      // Fetch password field slugs per collection so we can mask them in audit data
+      const pwSlugMap = new Map<string, Set<string>>();
+      if (colIds.length > 0) {
+        const { data: pwFields } = await supabase
+          .from("collection_fields")
+          .select("collection_id, slug")
+          .in("collection_id", colIds)
+          .eq("field_type", "password");
+        for (const f of pwFields ?? []) {
+          if (!pwSlugMap.has(f.collection_id as string)) pwSlugMap.set(f.collection_id as string, new Set());
+          pwSlugMap.get(f.collection_id as string)!.add(f.slug as string);
+        }
+      }
+
+      const maskAuditData = (d: Record<string, unknown> | null, colId: string): Record<string, unknown> | null => {
+        if (!d) return d;
+        const pwSlugs = pwSlugMap.get(colId);
+        if (!pwSlugs || pwSlugs.size === 0) return d;
+        const masked = { ...d };
+        for (const s of pwSlugs) if (s in masked) masked[s] = "****";
+        return masked;
+      };
+
       for (const row of auditRows ?? []) {
+        const colId = row.collection_id as string;
+        const maskedNew = maskAuditData(row.new_data ?? null, colId);
         results.push({
           id: row.id,
           created_at: row.changed_at,
@@ -147,13 +172,13 @@ export async function getActivityLogs(limit = 100, filters?: {
           event_type: `item.${row.action}`,
           status: "success",
           request_url: null,
-          request_body: row.new_data ?? null,
+          request_body: maskedNew,
           response_status: null,
           response_body: null,
           duration_ms: null,
-          scope_id: slugMap.get(row.collection_id as string) ?? null,
-          old_data: row.old_data ?? null,
-          new_data: row.new_data ?? null,
+          scope_id: slugMap.get(colId) ?? null,
+          old_data: maskAuditData(row.old_data ?? null, colId),
+          new_data: maskedNew,
           item_id: row.item_id ?? null,
           actor_id: row.changed_by ?? null,
         });

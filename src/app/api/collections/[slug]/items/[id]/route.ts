@@ -113,8 +113,21 @@ export async function GET(request: NextRequest, { params }: Params) {
           }
 
           const { data: childItems, count } = await q;
+          // Mask password fields in child items before returning
+          const { data: childPwFields } = await db
+            .from("collection_fields")
+            .select("slug")
+            .eq("collection_id", link.collectionId)
+            .eq("field_type", "password");
+          const childPwSlugs = new Set((childPwFields ?? []).map((f) => f.slug));
+          const maskedChildItems = (childItems ?? []).map((item) => {
+            if (childPwSlugs.size === 0) return item;
+            const d = { ...((item.data ?? {}) as Record<string, unknown>) };
+            for (const s of childPwSlugs) if (s in d) d[s] = "****";
+            return { ...item, data: d };
+          });
           childrenData![childSlug] = {
-            items: (childItems ?? []) as Record<string, unknown>[],
+            items: maskedChildItems as Record<string, unknown>[],
             total: count ?? 0,
           };
         })
@@ -127,6 +140,21 @@ export async function GET(request: NextRequest, { params }: Params) {
   let resolvedItem = result.item;
   if (includeDisplay) {
     resolvedItem = await resolveDisplayLabelsForItem(db, result.collection.id, result.item);
+  }
+
+  // Mask password fields in main item response
+  {
+    const { data: pwFields } = await db
+      .from("collection_fields")
+      .select("slug")
+      .eq("collection_id", result.collection.id)
+      .eq("field_type", "password");
+    const pwSlugs = new Set((pwFields ?? []).map((f) => f.slug));
+    if (pwSlugs.size > 0) {
+      const d = { ...((resolvedItem.data ?? {}) as Record<string, unknown>) };
+      for (const s of pwSlugs) if (s in d) d[s] = "****";
+      resolvedItem = { ...resolvedItem, data: d };
+    }
   }
 
   // Resolve _display in child items too
