@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sanitizePasswordFields } from "@/lib/sanitize-log-payload";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,12 +112,22 @@ export async function fireWebhooks(
   const webhooks = await getMatchingWebhooks(tenantId, "collection", collectionSlug, event);
   if (!webhooks.length) return;
 
+  // Sanitize password fields from item data before sending or logging
+  const db = createAdminClient();
+  const { data: fieldRows } = await db
+    .from("collection_fields")
+    .select("slug, field_type")
+    .eq("collection_id",
+      (await db.from("collections").select("id").eq("slug", collectionSlug).maybeSingle()).data?.id ?? ""
+    );
+  const safeData = sanitizePasswordFields(itemData, (fieldRows ?? []) as { slug: string; field_type: string }[]);
+
   const payload: WebhookPayload = {
     event,
     collection: collectionSlug,
     tenant_id: tenantId,
     timestamp: new Date().toISOString(),
-    data: itemData,
+    data: safeData,
   };
   const body = JSON.stringify(payload);
 
