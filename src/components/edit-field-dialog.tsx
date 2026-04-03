@@ -143,11 +143,11 @@ export function EditFieldDialog({
         if (data?.data?.columns) {
           setCatalogSchema(data.data.columns as CatalogSchema);
         } else {
-          setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
+          setCatalogSchema({ columns: [{ key: "label", label: "Label", type: "text" }, { key: "value", label: "Value", type: "text" }] });
         }
       })
       .catch(() => {
-        setCatalogSchema({ columns: [{ key: "label", type: "text" }, { key: "value", type: "text" }] });
+        setCatalogSchema({ columns: [{ key: "label", label: "Label", type: "text" }, { key: "value", label: "Value", type: "text" }] });
       });
   }, [catalogSlug]);
 

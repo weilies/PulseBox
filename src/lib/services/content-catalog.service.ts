@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { slugify } from "./slugify";
 import { requireSuperAdmin } from "./permissions.service";
+import type { CatalogSchema } from "@/types/catalog";
 
 export async function createCatalog(
   supabase: SupabaseClient,
@@ -45,9 +46,23 @@ export async function deleteCatalog(supabase: SupabaseClient, catalogId: string)
   return { data: true };
 }
 
+export async function updateCatalogColumns(
+  supabase: SupabaseClient,
+  params: { catalogId: string; columns: CatalogSchema | null }
+) {
+  await requireSuperAdmin(supabase);
+  const { catalogId, columns } = params;
+  const { error } = await supabase
+    .from("content_catalogs")
+    .update({ columns })
+    .eq("id", catalogId);
+  if (error) return { error: error.message };
+  return { data: true };
+}
+
 export async function createCatalogItem(
   supabase: SupabaseClient,
-  params: { catalogId: string; label: string; value: string }
+  params: { catalogId: string; label: string; value: string; data?: Record<string, unknown> }
 ) {
   await requireSuperAdmin(supabase);
 
@@ -63,20 +78,20 @@ export async function createCatalogItem(
   const sortOrder = (last?.sort_order ?? -1) + 1;
   const { error } = await supabase
     .from("content_catalog_items")
-    .insert({ catalog_id: catalogId, label, value, sort_order: sortOrder });
+    .insert({ catalog_id: catalogId, label, value, sort_order: sortOrder, data: params.data ?? {} });
   if (error) return { error: error.message };
   return { data: true };
 }
 
 export async function updateCatalogItem(
   supabase: SupabaseClient,
-  params: { itemId: string; label: string; value: string; isActive: boolean }
+  params: { itemId: string; label: string; value: string; isActive: boolean; data?: Record<string, unknown> }
 ) {
   await requireSuperAdmin(supabase);
   const { itemId, label, value, isActive } = params;
   const { error } = await supabase
     .from("content_catalog_items")
-    .update({ label, value, is_active: isActive })
+    .update({ label, value, is_active: isActive, data: params.data ?? {} })
     .eq("id", itemId);
   if (error) return { error: error.message };
   return { data: true };

@@ -6,12 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { CreateCatalogItemDialog } from "@/components/create-catalog-item-dialog";
 import { CatalogItemActions } from "@/components/catalog-item-actions";
+import { CatalogSchemaEditor } from "@/components/catalog-schema-editor";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { PAGE_SIZE } from "@/lib/data-grid";
 import { TablePagination } from "@/components/table-pagination";
-import { TableFilters, type FilterColumn } from "@/components/table-filters";
+import { TableFilters } from "@/components/table-filters";
 import { Suspense } from "react";
+import type { CatalogColumnDefinition, CatalogSchema } from "@/types/catalog";
 
 type CatalogItem = {
  id: string;
@@ -20,6 +22,7 @@ type CatalogItem = {
  label: string;
  sort_order: number;
  is_active: boolean;
+ data?: Record<string, unknown>;
 };
 
 type Catalog = {
@@ -27,6 +30,7 @@ type Catalog = {
  slug: string;
  name: string;
  description: string | null;
+ columns: CatalogSchema | null;
  content_catalog_items: CatalogItem[];
 };
 
@@ -64,6 +68,8 @@ export default async function CatalogItemsPage({
 
  if (!catalog) notFound();
 
+ const extraColumns: CatalogColumnDefinition[] = catalog.columns?.columns ?? [];
+
  let allItems = [...(catalog.content_catalog_items ?? [])].sort(
  (a, b) => a.sort_order - b.sort_order
  );
@@ -77,8 +83,11 @@ export default async function CatalogItemsPage({
  const totalPages = Math.ceil(totalItems / PAGE_SIZE);
  const items = allItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+ // Total columns: # + Label + Value + [extra...] + Status + [Actions]
+ const totalCols = 4 + extraColumns.length + (isSuperAdmin ? 1 : 0);
+
  return (
- <div className="p-6 space-y-6 max-w-4xl">
+ <div className="p-6 space-y-6 max-w-5xl">
  {/* Back nav */}
  <Link
  href="/dashboard/studio/content-catalog"
@@ -91,89 +100,99 @@ export default async function CatalogItemsPage({
  {/* Header */}
  <div className="flex items-center justify-between">
  <div className="flex items-center gap-3">
- <BookOpen className="h-6 w-6 text-blue-600 dark:text-blue-400" />
- <div>
- <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>
- {catalog.name}
- </h1>
- <div className="flex items-center gap-2 mt-0.5">
- <code className="text-xs text-gray-500 dark:text-gray-400 font-mono">{catalog.slug}</code>
- {!isSuperAdmin && (
- <span className="text-xs text-gray-500 dark:text-gray-400">(read-only)</span>
- )}
- </div>
- {catalog.description && (
- <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{catalog.description}</p>
- )}
- </div>
+  <BookOpen className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+  <div>
+  <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>
+   {catalog.name}
+  </h1>
+  <div className="flex items-center gap-2 mt-0.5">
+   <code className="text-xs text-gray-500 dark:text-gray-400 font-mono">{catalog.slug}</code>
+   {!isSuperAdmin && (
+   <span className="text-xs text-gray-500 dark:text-gray-400">(read-only)</span>
+   )}
+  </div>
+  {catalog.description && (
+   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{catalog.description}</p>
+  )}
+  </div>
  </div>
  {isSuperAdmin && (
- <CreateCatalogItemDialog catalogId={catalog.id} catalogSlug={catalog.slug} />
+  <CreateCatalogItemDialog catalogId={catalog.id} catalogSlug={catalog.slug} extraColumns={extraColumns} />
  )}
  </div>
 
  {/* Table */}
  <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
  <Table>
- <TableHeader className="bg-gray-100 dark:bg-gray-800">
- <TableRow className="border-gray-200 dark:border-gray-700 hover:bg-transparent">
- <TableHead className="w-10 text-gray-500 dark:text-gray-400">#</TableHead>
- <TableHead className="text-gray-500 dark:text-gray-400">Label</TableHead>
- <TableHead className="text-gray-500 dark:text-gray-400">Value</TableHead>
- <TableHead className="text-center text-gray-500 dark:text-gray-400">Status</TableHead>
- {isSuperAdmin && <TableHead className="w-[120px] text-gray-500 dark:text-gray-400">Actions</TableHead>}
- </TableRow>
- <Suspense><TableFilters columns={[
-  { key: "_num", type: "none" },
-  { key: "label", type: "text", placeholder: "Filter label..." },
-  { key: "value", type: "text", placeholder: "Filter value..." },
-  { key: "is_active", type: "select", options: [{ value: "true", label: "Active" }, { value: "false", label: "Inactive" }] },
-  ...(isSuperAdmin ? [{ key: "_actions" as const, type: "none" as const }] : []),
- ]} /></Suspense>
- </TableHeader>
- <TableBody>
- {items.length === 0 ? (
- <TableRow>
- <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
- No items yet.{isSuperAdmin ? " Add items to populate this catalog." : ""}
- </TableCell>
- </TableRow>
- ) : (
- items.map((item, index) => (
- <TableRow
- key={item.id}
- className={`border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800/50"} ${!item.is_active ? "opacity-50" : ""}`}
- >
- <TableCell className="text-gray-500 dark:text-gray-400 text-xs">{(page - 1) * PAGE_SIZE + index + 1}</TableCell>
- <TableCell className="font-medium text-gray-900 dark:text-gray-100 text-sm">{item.label}</TableCell>
- <TableCell>
- <code className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400 font-mono">{item.value}</code>
- </TableCell>
- <TableCell className="text-center">
- <Badge
- variant="outline"
- className={item.is_active
- ? "border-green-500/40 text-green-400 text-xs"
- : "border-zinc-600 text-gray-500 dark:text-gray-400 text-xs"}
- >
- {item.is_active ? "Active" : "Inactive"}
- </Badge>
- </TableCell>
- {isSuperAdmin && (
- <TableCell>
- <CatalogItemActions
- item={item}
- catalogId={catalog.id}
- catalogSlug={catalog.slug}
- isFirst={index === 0}
- isLast={index === items.length - 1}
- />
- </TableCell>
- )}
- </TableRow>
- ))
- )}
- </TableBody>
+  <TableHeader className="bg-gray-100 dark:bg-gray-800">
+  <TableRow className="border-gray-200 dark:border-gray-700 hover:bg-transparent">
+   <TableHead className="w-10 text-gray-500 dark:text-gray-400">#</TableHead>
+   <TableHead className="text-gray-500 dark:text-gray-400">Label</TableHead>
+   <TableHead className="text-gray-500 dark:text-gray-400">Value</TableHead>
+   {extraColumns.map((col) => (
+   <TableHead key={col.key} className="text-gray-500 dark:text-gray-400">{col.label}</TableHead>
+   ))}
+   <TableHead className="text-center text-gray-500 dark:text-gray-400">Status</TableHead>
+   {isSuperAdmin && <TableHead className="w-[120px] text-gray-500 dark:text-gray-400">Actions</TableHead>}
+  </TableRow>
+  <Suspense><TableFilters columns={[
+   { key: "_num", type: "none" },
+   { key: "label", type: "text", placeholder: "Filter label..." },
+   { key: "value", type: "text", placeholder: "Filter value..." },
+   ...extraColumns.map((col) => ({ key: col.key, type: "none" as const })),
+   { key: "is_active", type: "select", options: [{ value: "true", label: "Active" }, { value: "false", label: "Inactive" }] },
+   ...(isSuperAdmin ? [{ key: "_actions" as const, type: "none" as const }] : []),
+  ]} /></Suspense>
+  </TableHeader>
+  <TableBody>
+  {items.length === 0 ? (
+   <TableRow>
+   <TableCell colSpan={totalCols} className="text-center text-gray-500 dark:text-gray-400 py-10 bg-white dark:bg-gray-900">
+    No items yet.{isSuperAdmin ? " Add items to populate this catalog." : ""}
+   </TableCell>
+   </TableRow>
+  ) : (
+   items.map((item, index) => (
+   <TableRow
+    key={item.id}
+    className={`border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800/50"} ${!item.is_active ? "opacity-50" : ""}`}
+   >
+    <TableCell className="text-gray-500 dark:text-gray-400 text-xs">{(page - 1) * PAGE_SIZE + index + 1}</TableCell>
+    <TableCell className="font-medium text-gray-900 dark:text-gray-100 text-sm">{item.label}</TableCell>
+    <TableCell>
+    <code className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400 font-mono">{item.value}</code>
+    </TableCell>
+    {extraColumns.map((col) => (
+    <TableCell key={col.key} className="text-gray-700 dark:text-gray-300 text-sm">
+     {item.data?.[col.key] != null ? String(item.data[col.key]) : <span className="text-gray-400 dark:text-gray-600">—</span>}
+    </TableCell>
+    ))}
+    <TableCell className="text-center">
+    <Badge
+     variant="outline"
+     className={item.is_active
+     ? "border-green-500/40 text-green-400 text-xs"
+     : "border-zinc-600 text-gray-500 dark:text-gray-400 text-xs"}
+    >
+     {item.is_active ? "Active" : "Inactive"}
+    </Badge>
+    </TableCell>
+    {isSuperAdmin && (
+    <TableCell>
+     <CatalogItemActions
+     item={item}
+     catalogId={catalog.id}
+     catalogSlug={catalog.slug}
+     extraColumns={extraColumns}
+     isFirst={index === 0}
+     isLast={index === items.length - 1}
+     />
+    </TableCell>
+    )}
+   </TableRow>
+   ))
+  )}
+  </TableBody>
  </Table>
  </div>
 
@@ -185,6 +204,14 @@ export default async function CatalogItemsPage({
  sortCol="sort_order"
  ascending={true}
  />
+
+ {isSuperAdmin && (
+ <CatalogSchemaEditor
+  catalogId={catalog.id}
+  catalogSlug={catalog.slug}
+  initialColumns={extraColumns}
+ />
+ )}
 
  <p className="text-xs text-gray-500 dark:text-gray-400">
  Order controls how options appear in select fields across collections.

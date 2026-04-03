@@ -4,6 +4,7 @@
  */
 export interface CatalogColumnDefinition {
   key: string;          // e.g., "category", "requires_approval"
+  label: string;        // e.g., "Category", "Requires Approval"
   type: "text" | "number" | "boolean" | "date" | "datetime";
   required?: boolean;
   unique?: boolean;

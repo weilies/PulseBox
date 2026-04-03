@@ -15,6 +15,7 @@ import {
  createCatalogItem as createCatalogItemAction,
  updateCatalogItem as updateCatalogItemAction,
 } from "@/app/actions/content-catalog";
+import type { CatalogColumnDefinition } from "@/types/catalog";
 
 function slugify(text: string) {
  return text.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -23,14 +24,22 @@ function slugify(text: string) {
 interface CreateProps {
  catalogId: string;
  catalogSlug: string;
+ extraColumns?: CatalogColumnDefinition[];
 }
 
-export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps) {
+export function CreateCatalogItemDialog({ catalogId, catalogSlug, extraColumns = [] }: CreateProps) {
  const router = useRouter();
  const [open, setOpen] = useState(false);
  const [label, setLabel] = useState("");
  const [value, setValue] = useState("");
+ const [extraData, setExtraData] = useState<Record<string, string>>({});
  const [loading, setLoading] = useState(false);
+
+ function resetForm() {
+  setLabel("");
+  setValue("");
+  setExtraData({});
+ }
 
  async function handleSubmit(e: React.FormEvent) {
   e.preventDefault();
@@ -41,6 +50,9 @@ export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps)
    fd.set("catalog_slug", catalogSlug);
    fd.set("label", label);
    fd.set("value", value);
+   if (extraColumns.length > 0) {
+    fd.set("extra_data", JSON.stringify(extraData));
+   }
    const result = await createCatalogItemAction(fd);
    if (result.error) {
     toast.error(result.error);
@@ -48,8 +60,7 @@ export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps)
    }
    toast.success("Item added");
    setOpen(false);
-   setLabel("");
-   setValue("");
+   resetForm();
    router.refresh();
   } finally {
    setLoading(false);
@@ -57,7 +68,7 @@ export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps)
  }
 
  return (
-  <Dialog open={open} onOpenChange={setOpen}>
+  <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
   <DialogTrigger
    render={<Button variant="outline" size="sm" className="gap-2 text-blue-600 dark:text-blue-400 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600" />}
   >
@@ -91,6 +102,18 @@ export function CreateCatalogItemDialog({ catalogId, catalogSlug }: CreateProps)
      className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder:text-gray-500/50 dark:placeholder:text-gray-400/50"
     />
     </div>
+    {extraColumns.map((col) => (
+    <div key={col.key} className="space-y-2">
+     <Label className="text-gray-900 dark:text-gray-100">{col.label}</Label>
+     <Input
+     type={col.type === "number" ? "number" : "text"}
+     value={extraData[col.key] ?? ""}
+     onChange={(e) => setExtraData((prev) => ({ ...prev, [col.key]: e.target.value }))}
+     required={col.required}
+     className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder:text-gray-500/50 dark:placeholder:text-gray-400/50"
+     />
+    </div>
+    ))}
    </div>
    <DialogFooter className="mt-6">
     <DialogClose render={<Button type="button" variant="outline" className="border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" />}>Cancel</DialogClose>
@@ -114,14 +137,16 @@ interface EditProps {
  onOpenChange: (v: boolean) => void;
  item: { id: string; label: string; value: string; is_active: boolean; data?: Record<string, unknown> };
  catalogSlug: string;
+ extraColumns?: CatalogColumnDefinition[];
  onDeleteRequest?: () => void;
 }
 
-export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, onDeleteRequest }: EditProps) {
+export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, extraColumns = [], onDeleteRequest }: EditProps) {
  const router = useRouter();
  const [label, setLabel] = useState(item.label);
  const [value, setValue] = useState(item.value);
  const [isActive, setIsActive] = useState(item.is_active);
+ const [extraData, setExtraData] = useState<Record<string, string>>({});
  const [loading, setLoading] = useState(false);
 
  useEffect(() => {
@@ -129,8 +154,14 @@ export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, o
    setLabel(item.label);
    setValue(item.value);
    setIsActive(item.is_active);
+   // Populate extra fields from item.data
+   const d: Record<string, string> = {};
+   for (const col of extraColumns) {
+    d[col.key] = String(item.data?.[col.key] ?? "");
+   }
+   setExtraData(d);
   }
- }, [open, item]);
+ }, [open, item, extraColumns]);
 
  async function handleSubmit(e: React.FormEvent) {
   e.preventDefault();
@@ -142,6 +173,9 @@ export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, o
    fd.set("label", label);
    fd.set("value", value);
    fd.set("is_active", String(isActive));
+   if (extraColumns.length > 0) {
+    fd.set("extra_data", JSON.stringify(extraData));
+   }
    const result = await updateCatalogItemAction(fd);
    if (result.error) {
     toast.error(result.error);
@@ -174,6 +208,18 @@ export function EditCatalogItemDialog({ open, onOpenChange, item, catalogSlug, o
     <Input value={value} onChange={(e) => setValue(e.target.value)} required
      className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100" />
     </div>
+    {extraColumns.map((col) => (
+    <div key={col.key} className="space-y-2">
+     <Label className="text-gray-900 dark:text-gray-100">{col.label}</Label>
+     <Input
+     type={col.type === "number" ? "number" : "text"}
+     value={extraData[col.key] ?? ""}
+     onChange={(e) => setExtraData((prev) => ({ ...prev, [col.key]: e.target.value }))}
+     required={col.required}
+     className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+     />
+    </div>
+    ))}
     <div className="flex items-center gap-3">
     <input
      type="checkbox"

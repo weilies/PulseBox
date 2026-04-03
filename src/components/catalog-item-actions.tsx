@@ -16,15 +16,18 @@ import { deleteCatalogItem, moveCatalogItem } from "@/app/actions/content-catalo
 import { EditCatalogItemDialog } from "@/components/create-catalog-item-dialog";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 
+import type { CatalogColumnDefinition } from "@/types/catalog";
+
 interface Props {
- item: { id: string; label: string; value: string; sort_order: number; is_active: boolean };
+ item: { id: string; label: string; value: string; sort_order: number; is_active: boolean; data?: Record<string, unknown> };
  catalogId: string;
  catalogSlug: string;
+ extraColumns?: CatalogColumnDefinition[];
  isFirst: boolean;
  isLast: boolean;
 }
 
-export function CatalogItemActions({ item, catalogId, catalogSlug, isFirst, isLast }: Props) {
+export function CatalogItemActions({ item, catalogId, catalogSlug, extraColumns = [], isFirst, isLast }: Props) {
  const router = useRouter();
  const [editOpen, setEditOpen] = useState(false);
  const [deleteOpen, setDeleteOpen] = useState(false);
@@ -94,6 +97,7 @@ export function CatalogItemActions({ item, catalogId, catalogSlug, isFirst, isLa
  onOpenChange={setEditOpen}
  item={item}
  catalogSlug={catalogSlug}
+ extraColumns={extraColumns}
  onDeleteRequest={() => { setEditOpen(false); setDeleteOpen(true); }}
  />
 
