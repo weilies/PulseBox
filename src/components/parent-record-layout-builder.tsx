@@ -17,7 +17,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronUp, ChevronDown, Save } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Plus, Trash2, ChevronUp, ChevronDown, Save, GripVertical } from "lucide-react";
 import { saveParentRecordLayout } from "@/app/actions/studio";
 import type { ParentRecordLayout, ParentRecordElement } from "@/types/parent-record-layout";
 
@@ -58,6 +59,8 @@ export function ParentRecordLayoutBuilder({
   );
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const placedSlugs = new Set(elements.map((e) => e.fieldSlug));
   const availableFields = fields.filter((f) => !placedSlugs.has(f.slug));
@@ -93,6 +96,20 @@ export function ParentRecordLayoutBuilder({
       newElements[index],
     ];
     setElements(newElements);
+  };
+
+  const handleDrop = (dropIndex: number) => {
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const newElements = [...elements];
+    const [moved] = newElements.splice(dragIndex, 1);
+    newElements.splice(dropIndex, 0, moved);
+    setElements(newElements);
+    setDragIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleWidthChange = (index: number, width: "1" | "2" | "3") => {
@@ -144,9 +161,20 @@ export function ParentRecordLayoutBuilder({
               return (
                 <div
                   key={idx}
-                  className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700"
+                  draggable
+                  onDragStart={() => setDragIndex(idx)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }}
+                  onDragLeave={() => setDragOverIndex(null)}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(idx); }}
+                  onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                  className={cn(
+                    "flex items-center justify-between gap-2 p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing transition-all",
+                    dragOverIndex === idx && "border-blue-400 bg-blue-50 dark:bg-blue-950/30",
+                    dragIndex === idx && "opacity-50"
+                  )}
                 >
                   <div className="flex items-center gap-2 min-w-0">
+                    <GripVertical className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
                     <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
                       {idx + 1}
                     </span>

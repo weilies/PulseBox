@@ -28,8 +28,10 @@ import {
   Save,
   Layers,
   Minus,
+  GripVertical,
 } from "lucide-react";
 import { saveFormLayout } from "@/app/actions/studio";
+import { cn } from "@/lib/utils";
 import type {
   FormLayout,
   FormTab,
@@ -103,6 +105,8 @@ export function FormBuilder({
     initialLayout?.tabs?.[0]?.id ?? defaultTabs[0].id
   );
   const [saving, setSaving] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   // Drawer state — stores the callback to use when adding an element
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -151,6 +155,18 @@ export function FormBuilder({
       [arr[idx], arr[to]] = [arr[to], arr[idx]];
       return { ...t, elements: arr };
     });
+  }
+
+  function handleElementDrop(tabId: string, dropIdx: number) {
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); setDragOverIdx(null); return; }
+    updateTab(tabId, (t) => {
+      const arr = [...t.elements];
+      const [moved] = arr.splice(dragIdx, 1);
+      arr.splice(dropIdx, 0, moved);
+      return { ...t, elements: arr };
+    });
+    setDragIdx(null);
+    setDragOverIdx(null);
   }
 
   function patchElement(tabId: string, idx: number, patch: Partial<FormElement>) {
@@ -258,7 +274,16 @@ export function FormBuilder({
             {activeTab.elements.map((el, idx) => {
               const span = el.type === "field" && el.width === "half" ? "col-span-1" : "col-span-2";
               return (
-                <div key={idx} className={span}>
+                <div
+                  key={idx}
+                  className={span}
+                  draggable
+                  onDragStart={() => setDragIdx(idx)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
+                  onDragLeave={() => setDragOverIdx(null)}
+                  onDrop={(e) => { e.preventDefault(); handleElementDrop(activeTab.id, idx); }}
+                  onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                >
                   <ElementRow
                     element={el}
                     index={idx}
@@ -269,6 +294,8 @@ export function FormBuilder({
                     onPatch={(patch) => patchElement(activeTab.id, idx, patch)}
                     openDrawer={openDrawer}
                     placedSlugs={placedSlugs}
+                    isDragOver={dragOverIdx === idx}
+                    isDragging={dragIdx === idx}
                   />
                 </div>
               );
@@ -331,6 +358,8 @@ function ElementRow({
   onPatch,
   openDrawer,
   placedSlugs,
+  isDragOver,
+  isDragging,
 }: {
   element: FormElement;
   index: number;
@@ -341,6 +370,8 @@ function ElementRow({
   onPatch: (patch: Partial<FormElement>) => void;
   openDrawer: (addFn: DrawerAddFn) => void;
   placedSlugs: Set<string>;
+  isDragOver?: boolean;
+  isDragging?: boolean;
 }) {
   if (element.type === "field") {
     const def = fields.find((f) => f.slug === element.fieldSlug);
@@ -348,7 +379,8 @@ function ElementRow({
     const currentWidget = element.widget ?? "auto";
 
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 hover:border-gray-300 dark:hover:border-gray-700 transition-colors h-full">
+      <div className={cn("flex items-center gap-2 rounded-lg border bg-white dark:bg-gray-900 px-3 py-2.5 transition-colors h-full cursor-grab", isDragOver ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30" : "border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700", isDragging && "opacity-50")}>
+        <GripVertical className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
         <div className="flex-1 flex items-center gap-2 min-w-0">
           <div className="h-2 w-2 rounded-full bg-blue-400 shrink-0" />
           <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
