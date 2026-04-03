@@ -7,6 +7,7 @@ import {
  Folder, FolderOpen, Box, Database, ChevronDown, ChevronUp, ChevronRight,
  Plus, Pencil, Trash2, FolderPlus, ArrowRight, GripVertical, X,
 } from "lucide-react";
+import * as LucideIcons from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildNavTree } from "@/lib/services/nav.service";
 import type { NavFolder, NavItem } from "@/lib/services/nav.service";
@@ -30,6 +31,7 @@ interface NavManagerProps {
  initialFolders: NavFolder[];
  initialItems: NavItem[];
  allCollections: Collection[];
+ isSuperAdmin?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,28 +40,41 @@ interface NavManagerProps {
 
 function InlineInput({
  value,
+ iconValue,
  onSave,
  onCancel,
  placeholder,
+ showIconField,
 }: {
  value: string;
- onSave: (val: string) => void;
+ iconValue?: string;
+ onSave: (val: string, icon?: string) => void;
  onCancel: () => void;
  placeholder?: string;
+ showIconField?: boolean;
 }) {
  const [val, setVal] = useState(value);
+ const [icon, setIcon] = useState(iconValue ?? "");
  return (
  <form
- className="flex items-center gap-1"
- onSubmit={(e) => { e.preventDefault(); if (val.trim()) onSave(val.trim()); }}
+ className="flex items-center gap-1 flex-wrap"
+ onSubmit={(e) => { e.preventDefault(); if (val.trim()) onSave(val.trim(), showIconField ? icon || undefined : undefined); }}
  >
  <input
  autoFocus
  value={val}
  onChange={(e) => setVal(e.target.value)}
  placeholder={placeholder}
- className="bg-gray-100 dark:bg-gray-800 border border-blue-500/40 rounded px-2 py-0.5 text-xs text-gray-900 dark:text-gray-100 outline-none focus:border-blue-400 w-36"
+ className="bg-gray-100 dark:bg-gray-800 border border-blue-500/40 rounded px-2 py-0.5 text-xs text-gray-900 dark:text-gray-100 outline-none focus:border-blue-400 w-28"
  />
+ {showIconField && (
+  <input
+  value={icon}
+  onChange={(e) => setIcon(e.target.value)}
+  placeholder="icon (e.g. star)"
+  className="bg-gray-100 dark:bg-gray-800 border border-blue-500/40 rounded px-2 py-0.5 text-xs text-gray-900 dark:text-gray-100 outline-none focus:border-blue-400 w-24"
+  />
+ )}
  <button type="submit" className="text-blue-600 dark:text-blue-400 hover:text-[#a8c4ff] text-xs px-1">Save</button>
  <button type="button" onClick={onCancel} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 text-xs px-1">Cancel</button>
  </form>
@@ -100,7 +115,7 @@ function DropZone({
 // Main NavManager
 // ---------------------------------------------------------------------------
 
-export function NavManager({ initialFolders, initialItems, allCollections }: NavManagerProps) {
+export function NavManager({ initialFolders, initialItems, allCollections, isSuperAdmin = false }: NavManagerProps) {
  const router = useRouter();
  const [isPending, startTransition] = useTransition();
 
@@ -146,26 +161,30 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  ) => {
  startTransition(async () => {
  const siblings = getFolderSiblings(parentId);
- const currentIndex = getFolderPosition(folderId, parentId);
+ const currentIndex = siblings.findIndex(f => f.id === folderId);
+ if (currentIndex === -1) return;
 
- let targetIndex: number;
- if (direction === 'up' && currentIndex > 0) {
- targetIndex = currentIndex - 1;
- } else if (direction === 'down' && currentIndex < siblings.length - 1) {
- targetIndex = currentIndex + 1;
- } else {
- return; // out of bounds, do nothing
- }
+ const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+ if (targetIndex < 0 || targetIndex >= siblings.length) return;
 
- const targetSortOrder = siblings[targetIndex].sort_order;
- const fd = new FormData();
- fd.set("folder_id", folderId);
- if (parentId) fd.set("parent_id", parentId);
- fd.set("sort_order", String(targetSortOrder));
+ const current = siblings[currentIndex];
+ const target = siblings[targetIndex];
 
- const result = await moveNavFolderAction(fd);
- if (result.error) toast.error(result.error);
- else { refresh(); }
+ // Swap sort_orders between the two siblings
+ const fd1 = new FormData();
+ fd1.set("folder_id", current.id);
+ if (parentId) fd1.set("parent_id", parentId);
+ fd1.set("sort_order", String(target.sort_order));
+
+ const fd2 = new FormData();
+ fd2.set("folder_id", target.id);
+ if (parentId) fd2.set("parent_id", parentId);
+ fd2.set("sort_order", String(current.sort_order));
+
+ const [r1, r2] = await Promise.all([moveNavFolderAction(fd1), moveNavFolderAction(fd2)]);
+ if (r1.error) toast.error(r1.error);
+ else if (r2.error) toast.error(r2.error);
+ else refresh();
  });
  };
 
@@ -187,14 +206,15 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  setCreatingFolderParentId(undefined as unknown as null);
  }
 
- async function handleRenameFolder(folderId: string, name: string) {
+ async function handleRenameFolder(folderId: string, name: string, icon?: string) {
  const fd = new FormData();
  fd.set("folder_id", folderId);
  fd.set("name", name);
+ if (icon !== undefined) fd.set("icon", icon);
  startTransition(async () => {
  const result = await updateNavFolder(fd);
  if (result.error) toast.error(result.error);
- else { toast.success("Folder renamed"); refresh(); }
+ else { toast.success("Folder updated"); refresh(); }
  });
  setEditingFolderId(null);
  }
@@ -282,8 +302,8 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  return (
  <div
  key={item.id}
- draggable
- onDragStart={() => onItemDragStart(item.id)}
+ draggable={isSuperAdmin}
+ onDragStart={() => isSuperAdmin && onItemDragStart(item.id)}
  className={cn(
  "group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all",
  "bg-gray-100 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:border-gray-600",
@@ -291,9 +311,10 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  dragItemId === item.id && "opacity-50"
  )}
  >
- <GripVertical className="h-3 w-3 text-blue-500 dark:text-blue-400/30 cursor-grab shrink-0" />
+ {isSuperAdmin && <GripVertical className="h-3 w-3 text-blue-500 dark:text-blue-400/30 cursor-grab shrink-0" />}
  <Icon className="h-3.5 w-3.5 text-blue-400 dark:text-blue-300 shrink-0" />
  <span className="flex-1 truncate text-gray-900 dark:text-gray-100">{displayName}</span>
+ {isSuperAdmin && (
  <button
  onClick={() => handleRemoveItem(item.id)}
  disabled={isPending}
@@ -302,6 +323,7 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  >
  <X className="h-3 w-3" />
  </button>
+ )}
  </div>
  );
  }
@@ -312,6 +334,16 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  const isEditing = editingFolderId === folder.id;
  const isCreatingChild = creatingFolderParentId === folder.id;
 
+ // Resolve folder icon: use custom lucide icon if set, else default Folder/FolderOpen
+ const FolderIconComp = (() => {
+  if (folder.icon) {
+  const iconName = folder.icon.split("-").map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
+  const Resolved = (LucideIcons as Record<string, unknown>)[iconName];
+  if (Resolved) return Resolved as React.ComponentType<{ className?: string }>;
+  }
+  return isOpen ? FolderOpen : Folder;
+ })();
+
  const currentIndex = getFolderPosition(folder.id, folder.parent_id);
  const siblings = getFolderSiblings(folder.parent_id);
  const isFirstSibling = currentIndex === 0;
@@ -321,8 +353,8 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  <div key={folder.id} className={cn(depth > 0 && "ml-4")}>
  {/* Folder header */}
  <div
- draggable={!isEditing}
- onDragStart={() => !isEditing && onFolderDragStart(folder.id)}
+ draggable={isSuperAdmin && !isEditing}
+ onDragStart={() => isSuperAdmin && !isEditing && onFolderDragStart(folder.id)}
  onDragOver={(e) => e.preventDefault()}
  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDropToFolder(folder.id); }}
  className={cn(
@@ -331,7 +363,7 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  dragFolderId === folder.id && "opacity-50"
  )}
  >
- <GripVertical className="h-3 w-3 text-blue-500 dark:text-blue-400/30 cursor-grab shrink-0" />
+ {isSuperAdmin && <GripVertical className="h-3 w-3 text-blue-500 dark:text-blue-400/30 cursor-grab shrink-0" />}
  <button
  onClick={() => setExpandedFolders((prev) => {
  const next = new Set(prev);
@@ -341,11 +373,13 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
  title={`ID: ${folder.id}`}
  >
- {isOpen ? <FolderOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" /> : <Folder className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />}
+ <FolderIconComp className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
  {isEditing ? (
  <InlineInput
  value={folder.name}
- onSave={(name) => handleRenameFolder(folder.id, name)}
+ iconValue={folder.icon ?? ""}
+ showIconField
+ onSave={(name, icon) => handleRenameFolder(folder.id, name, icon)}
  onCancel={() => setEditingFolderId(null)}
  />
  ) : (
@@ -358,7 +392,7 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  )}
  </button>
 
- {!isEditing && (
+ {!isEditing && isSuperAdmin && (
  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all ml-1">
  <button
  onClick={() => { setCreatingFolderParentId(folder.id); setExpandedFolders((p) => new Set([...p, folder.id])); }}
@@ -444,6 +478,7 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100" style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}>
  Navigation Structure
  </h2>
+ {isSuperAdmin && (
  <button
  onClick={() => setIsCreatingRootFolder(true)}
  className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-[#a8c4ff] bg-gray-100 dark:bg-gray-800 hover:bg-blue-100 border border-gray-300 dark:border-gray-600 rounded-md px-2.5 py-1 transition-all"
@@ -451,6 +486,7 @@ export function NavManager({ initialFolders, initialItems, allCollections }: Nav
  <Plus className="h-3 w-3" />
  New Folder
  </button>
+ )}
  </div>
 
  <div className="space-y-0.5 min-h-[200px]">

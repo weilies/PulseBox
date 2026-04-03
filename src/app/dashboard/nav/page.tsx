@@ -1,4 +1,4 @@
-import { getUser } from "@/lib/auth";
+import { getUser, getUserRole } from "@/lib/auth";
 import { resolveTenant } from "@/lib/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { Map as MapIcon } from "lucide-react";
@@ -12,6 +12,10 @@ export default async function NavManagementPage() {
  const supabase = await createClient();
  const tenantId = await resolveTenant(user.id);
  if (!tenantId) return null;
+
+ const role = await getUserRole(user.id, tenantId);
+ const { data: currentTenant } = await supabase.from("tenants").select("is_super").eq("id", tenantId).maybeSingle();
+ const isSuperAdmin = role === "super_admin" && currentTenant?.is_super === true;
 
  const [foldersResult, itemsResult, collectionsResult] = await Promise.all([
  supabase
@@ -54,6 +58,7 @@ export default async function NavManagementPage() {
  initialFolders={folders}
  initialItems={items}
  allCollections={collections}
+ isSuperAdmin={isSuperAdmin}
  />
  </div>
  );
