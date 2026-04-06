@@ -15,6 +15,7 @@ import {
 import {
   pauseInstalledApp, resumeInstalledApp,
   updateInstalledAppConfig, updateInstalledAppAccess, updateAppCredential,
+  saveAppSchedule,
 } from "@/app/actions/platform-apps";
 import Link from "next/link";
 
@@ -51,6 +52,8 @@ interface InstallInfo {
   installed_at: string;
   installed_by_email: string | null;
   n8n_workflow_id: string | null;
+  next_run_at: string | null;
+  schedule_timezone: string;
 }
 
 interface Credential {
@@ -147,7 +150,7 @@ function nextCronRun(expr: string): Date | null {
 }
 
 // ---------------------------------------------------------------------------
-// Cron preset buttons
+// Cron preset buttons + timezone list
 // ---------------------------------------------------------------------------
 
 const CRON_PRESETS = [
@@ -156,6 +159,28 @@ const CRON_PRESETS = [
   { label: "Hourly", value: "0 * * * *" },
   { label: "Every Mon 8AM", value: "0 8 * * 1" },
   { label: "1st of month 9AM", value: "0 9 1 * *" },
+];
+
+const TIMEZONES = [
+  { label: "UTC (Coordinated Universal Time)", value: "UTC" },
+  { label: "Asia/Singapore — SGT, UTC+8", value: "Asia/Singapore" },
+  { label: "Asia/Kuala_Lumpur — MYT, UTC+8", value: "Asia/Kuala_Lumpur" },
+  { label: "Asia/Hong_Kong — HKT, UTC+8", value: "Asia/Hong_Kong" },
+  { label: "Asia/Tokyo — JST, UTC+9", value: "Asia/Tokyo" },
+  { label: "Asia/Jakarta — WIB, UTC+7", value: "Asia/Jakarta" },
+  { label: "Asia/Bangkok — ICT, UTC+7", value: "Asia/Bangkok" },
+  { label: "Asia/Manila — PHT, UTC+8", value: "Asia/Manila" },
+  { label: "Asia/Dubai — GST, UTC+4", value: "Asia/Dubai" },
+  { label: "Asia/Kolkata — IST, UTC+5:30", value: "Asia/Kolkata" },
+  { label: "Australia/Sydney — AEST/AEDT", value: "Australia/Sydney" },
+  { label: "Australia/Melbourne — AEST/AEDT", value: "Australia/Melbourne" },
+  { label: "Europe/London — GMT/BST", value: "Europe/London" },
+  { label: "Europe/Paris — CET/CEST", value: "Europe/Paris" },
+  { label: "Europe/Berlin — CET/CEST", value: "Europe/Berlin" },
+  { label: "America/New_York — EST/EDT", value: "America/New_York" },
+  { label: "America/Chicago — CST/CDT", value: "America/Chicago" },
+  { label: "America/Denver — MST/MDT", value: "America/Denver" },
+  { label: "America/Los_Angeles — PST/PDT", value: "America/Los_Angeles" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -249,17 +274,28 @@ function OverviewTab({ install, app, stats }: { install: InstallInfo; app: AppIn
 // Tab: Schedule
 // ---------------------------------------------------------------------------
 
-function ScheduleTab({ install, app, onUpdate }: { install: InstallInfo; app: AppInfo; onUpdate: (config: Record<string, unknown>) => void }) {
+function ScheduleTab({
+  install,
+  app,
+  onScheduleUpdate,
+}: {
+  install: InstallInfo;
+  app: AppInfo;
+  onScheduleUpdate: (config: Record<string, unknown>, nextRunAt: string | null, timezone: string) => void;
+}) {
   const cronField = (app.config_schema?.fields ?? []).find((f) => f.type === "cron");
   const [cronValue, setCronValue] = useState(
     cronField ? ((install.config[cronField.key] as string) ?? "") : ""
   );
+  const [timezone, setTimezone] = useState(install.schedule_timezone || "UTC");
+  const [nextRunAt, setNextRunAt] = useState<string | null>(install.next_run_at);
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPausing, startPauseTransition] = useTransition();
 
-  const nextRun = cronValue ? nextCronRun(cronValue) : null;
+  // Client-side preview only (no timezone precision)
+  const nextRunPreview = cronValue ? nextCronRun(cronValue) : null;
 
   function handleSave() {
     if (!cronField) return;
@@ -268,10 +304,14 @@ function ScheduleTab({ install, app, onUpdate }: { install: InstallInfo; app: Ap
       const newConfig = { ...install.config, [cronField.key]: cronValue };
       const fd = new FormData();
       fd.set("installed_app_id", install.id);
+      fd.set("cron_expr", cronValue);
+      fd.set("timezone", timezone);
       fd.set("config", JSON.stringify(newConfig));
-      const result = await updateInstalledAppConfig(fd);
+      const result = await saveAppSchedule(fd);
       if (result.error) { setError(result.error); return; }
-      onUpdate(newConfig);
+      const newNextRunAt = result.next_run_at ?? null;
+      setNextRunAt(newNextRunAt);
+      onScheduleUpdate(newConfig, newNextRunAt, timezone);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     });
@@ -286,34 +326,86 @@ function ScheduleTab({ install, app, onUpdate }: { install: InstallInfo; app: Ap
 
   return (
     <div className="space-y-5">
-      {/* Guide */}
-      <div className="flex items-start gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-4">
-        <Info className="h-4 w-4 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="font-medium">How scheduling works</p>
-          <p className="text-blue-600 text-xs">The cron expression below controls when this automation runs. Changes here update the PulseBox config. If n8n is connected, the workflow schedule is managed there. Use the preset buttons for common patterns, or enter a custom cron expression.</p>
+      {/* How scheduling works guide */}
+      <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-lg p-4">
+        <Info className="h-4 w-4 shrink-0 mt-0.5 text-blue-500" />
+        <div className="space-y-2 text-xs text-blue-700">
+          <p className="font-semibold text-sm text-blue-800">How scheduling works</p>
+          <ol className="space-y-1 list-decimal list-inside text-blue-700">
+            <li><strong>Set a cron expression</strong> below — this defines when the automation fires.</li>
+            <li><strong>PulseBox calculates the next run time</strong> and stores it in the database.</li>
+            <li>A <strong>background dispatcher</strong> runs every minute and triggers any overdue apps via n8n.</li>
+            <li>After each run, the next run time is automatically recalculated.</li>
+          </ol>
+          <p className="text-blue-600 pt-1">The <strong>Run Now</strong> button (top right) bypasses the schedule and triggers the workflow immediately at any time.</p>
         </div>
       </div>
 
-      {/* Enable toggle */}
+      {/* Active / Paused toggle */}
       <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-white">
         <div>
           <p className="font-medium text-gray-800">Workflow Active</p>
-          <p className="text-xs text-gray-400 mt-0.5">When paused, the n8n workflow is deactivated and will not run on schedule.</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {install.enabled
+              ? "This app is active and will run on schedule. Pause it to temporarily stop all scheduled dispatches."
+              : "This app is paused. No scheduled runs will occur until you resume it."}
+          </p>
         </div>
         <button
           onClick={handleToggle}
           disabled={isPausing}
-          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${install.enabled ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"}`}
+          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            install.enabled
+              ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+          }`}
         >
           {install.enabled ? <PauseCircle className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
           {isPausing ? "Updating…" : install.enabled ? "Pause" : "Resume"}
         </button>
       </div>
 
+      {/* Next scheduled run (from DB) */}
+      {nextRunAt && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
+          <Clock className="h-4 w-4 text-emerald-600 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold text-emerald-700">Next scheduled run</p>
+            <p className="text-sm text-emerald-800 mt-0.5">
+              {new Date(nextRunAt).toLocaleString("en-US", {
+                weekday: "short", month: "short", day: "numeric",
+                hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+              })}
+            </p>
+            <p className="text-xs text-emerald-600 mt-0.5">Timezone: {timezone}</p>
+          </div>
+        </div>
+      )}
+
       {cronField ? (
         <>
-          {/* Presets */}
+          {/* Timezone selector */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">
+              Timezone
+              <span className="ml-1 font-normal text-gray-400">— cron times are interpreted in this timezone</span>
+            </label>
+            <Select value={timezone} onValueChange={(v) => v && setTimezone(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIMEZONES.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-400 mt-1">
+              Example: <span className="font-mono text-blue-500">0 6 * * *</span> with timezone <strong>Asia/Singapore</strong> fires at 06:00 SGT (22:00 UTC the night before).
+            </p>
+          </div>
+
+          {/* Quick presets */}
           <div>
             <p className="text-xs font-medium text-gray-500 mb-2">Quick Presets</p>
             <div className="flex flex-wrap gap-2">
@@ -321,7 +413,11 @@ function ScheduleTab({ install, app, onUpdate }: { install: InstallInfo; app: Ap
                 <button
                   key={p.value}
                   onClick={() => setCronValue(p.value)}
-                  className={`rounded border px-3 py-1 text-xs transition-colors ${cronValue === p.value ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600"}`}
+                  className={`rounded border px-3 py-1 text-xs transition-colors ${
+                    cronValue === p.value
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600"
+                  }`}
                 >
                   {p.label}
                 </button>
@@ -329,7 +425,7 @@ function ScheduleTab({ install, app, onUpdate }: { install: InstallInfo; app: Ap
             </div>
           </div>
 
-          {/* Cron input */}
+          {/* Cron expression input */}
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">Cron Expression</label>
             <div className="flex gap-2">
@@ -340,28 +436,49 @@ function ScheduleTab({ install, app, onUpdate }: { install: InstallInfo; app: Ap
                 className="font-mono"
               />
               <Button onClick={handleSave} disabled={isPending || !cronValue}>
-                {isPending ? "Saving…" : saved ? "Saved ✓" : "Save"}
+                {isPending ? "Saving…" : saved ? "Saved ✓" : "Save Schedule"}
               </Button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Format: minute hour day month weekday (0–59 0–23 1–31 1–12 0–6)</p>
-            <p className="text-xs text-gray-400 mt-0.5">Examples: <span className="font-mono text-blue-500">0 6 * * *</span> = daily 6AM · <span className="font-mono text-blue-500">0 * * * *</span> = hourly · <span className="font-mono text-blue-500">0 8 * * 1</span> = every Monday 8AM</p>
+            <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+              Format: <span className="font-mono">minute hour day-of-month month day-of-week</span>
+              &ensp;(ranges: 0–59 · 0–23 · 1–31 · 1–12 · 0–6)
+            </p>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400">
+              <span><span className="font-mono text-blue-500">0 6 * * *</span> = every day at 6:00 AM</span>
+              <span><span className="font-mono text-blue-500">0 * * * *</span> = every hour</span>
+              <span><span className="font-mono text-blue-500">0 8 * * 1</span> = every Monday 8:00 AM</span>
+              <span><span className="font-mono text-blue-500">0 9 1 * *</span> = 1st of every month</span>
+              <span><span className="font-mono text-blue-500">*/30 * * * *</span> = every 30 minutes</span>
+            </div>
           </div>
 
-          {/* Preview */}
+          {/* Live preview (client-side, approximate) */}
           {cronValue && (
-            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50 space-y-1 text-sm">
-              <p className="text-gray-500">Schedule: <strong className="text-gray-800">{describeCron(cronValue)}</strong></p>
-              {nextRun && (
-                <p className="text-gray-400 text-xs">Next run: {nextRun.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+            <div className="p-4 rounded-lg border border-gray-100 bg-gray-50 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Live Preview</span>
+                <span className="text-xs text-gray-400">(approximate — save to get the exact time)</span>
+              </div>
+              <p className="text-sm text-gray-700">
+                <span className="text-gray-400">Reads as: </span>
+                <strong>{describeCron(cronValue)}</strong>
+              </p>
+              {nextRunPreview && (
+                <p className="text-xs text-gray-400">
+                  Estimated next: {nextRunPreview.toLocaleString("en-US", {
+                    weekday: "short", month: "short", day: "numeric",
+                    hour: "2-digit", minute: "2-digit",
+                  })} (local time)
+                </p>
               )}
             </div>
           )}
         </>
       ) : (
-        <div className="p-5 text-center text-gray-400 border border-gray-200 rounded-lg">
-          <Clock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+        <div className="p-6 text-center text-gray-400 border border-gray-200 rounded-lg space-y-2">
+          <Clock className="h-8 w-8 mx-auto text-gray-300" />
           <p className="font-medium text-gray-500">Manual execution only</p>
-          <p className="text-sm mt-1">This app does not have a scheduled trigger configured. Use &ldquo;Run Now&rdquo; to execute it manually.</p>
+          <p className="text-sm">This app has no configurable schedule field. Use the <strong>Run Now</strong> button at the top to trigger it manually whenever needed.</p>
         </div>
       )}
 
@@ -1212,7 +1329,9 @@ export function AppDetailClient({
           <ScheduleTab
             install={install}
             app={app}
-            onUpdate={(config) => setInstall((prev) => ({ ...prev, config }))}
+            onScheduleUpdate={(config, nextRunAt, tz) =>
+              setInstall((prev) => ({ ...prev, config, next_run_at: nextRunAt, schedule_timezone: tz }))
+            }
           />
         )}
         {activeTab === "credentials" && (

@@ -6,6 +6,7 @@ import { getUser, getUserRole } from "@/lib/auth";
 import { resolveTenant, getCurrentTenantId } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import * as N8n from "@/lib/services/n8n.service";
+import { calculateNextRun } from "@/lib/cron-utils";
 
 // ---------------------------------------------------------------------------
 // Guards
@@ -442,4 +443,62 @@ export async function resolveErrorRow(
 
   revalidatePath(`/dashboard/studio/automata`);
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Tenant: Save schedule (cron expression + timezone) + recalculate next_run_at
+// ---------------------------------------------------------------------------
+
+export async function saveAppSchedule(
+  formData: FormData
+): Promise<{ error?: string; next_run_at?: string | null }> {
+  const user = await getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const tenantId = await resolveTenant(user.id);
+  if (!tenantId) return { error: "No tenant context" };
+
+  const installedAppId = formData.get("installed_app_id") as string;
+  const cronExpr = (formData.get("cron_expr") as string) ?? "";
+  const timezone = (formData.get("timezone") as string) || "UTC";
+  const configJson = formData.get("config") as string;
+
+  if (!installedAppId) return { error: "Missing installed_app_id" };
+
+  let config: Record<string, unknown> = {};
+  try {
+    config = configJson ? JSON.parse(configJson) : {};
+  } catch {
+    return { error: "Invalid config JSON" };
+  }
+
+  const db = createAdminClient();
+
+  // Verify ownership
+  const { data: install } = await db
+    .from("tenant_installed_apps")
+    .select("id")
+    .eq("id", installedAppId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!install) return { error: "Install not found" };
+
+  // Calculate next_run_at from cron + timezone
+  const nextRun = cronExpr ? calculateNextRun(cronExpr, timezone) : null;
+  const next_run_at = nextRun ? nextRun.toISOString() : null;
+
+  const { error } = await db
+    .from("tenant_installed_apps")
+    .update({
+      config,
+      schedule_timezone: timezone,
+      next_run_at,
+    })
+    .eq("id", installedAppId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/dashboard/studio/automata`);
+  return { next_run_at };
 }

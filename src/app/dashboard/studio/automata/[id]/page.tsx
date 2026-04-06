@@ -30,6 +30,7 @@ export default async function AutomataAppDetailPage({
     .from("tenant_installed_apps")
     .select(`
       id, enabled, config, access_policy, installed_at, installed_by_user_id, n8n_workflow_id,
+      next_run_at, schedule_timezone,
       platform_apps(id, slug, name, description, icon, type, version, config_schema, published_by)
     `)
     .eq("id", installedAppId)
@@ -125,6 +126,8 @@ export default async function AutomataAppDetailPage({
           installed_at: install.installed_at,
           installed_by_email: installedByEmail,
           n8n_workflow_id: install.n8n_workflow_id,
+          next_run_at: install.next_run_at ?? null,
+          schedule_timezone: install.schedule_timezone ?? "UTC",
         }}
         app={install.platform_apps}
         credentials={credentials ?? []}
